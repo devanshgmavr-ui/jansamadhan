@@ -1,0 +1,39 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+government-portal/node_modules/
+government-portal/dist/
+
+# Backend
+backend/venv/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/tests/__pycache__/
+backend/.pytest_cache/
+backend/uploads/
+backend/backups/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+*.pyc
+*.pyo
+venv/
+.pytest_cache/
+
+# Logs and coverage
+*.log
+coverage/
+htmlcov/
+.coverage
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
