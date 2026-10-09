@@ -244,6 +244,46 @@ def test_track_without_routing_has_null_snapshot(db):
     assert body["government_review"] is None
 
 
+# Phase 1 decision classification --------------------------------------------------
+def test_assign_public_records_public_resolution(db):
+    owner = make_user(db)
+    official = make_official(db)
+    ticket = submit(db, owner, dict(APPROVABLE_PROBLEM)).json()["ticket"]
+    gtok = gov_token(db, official)
+    r = client.post(f"{GOV}/requests/{ticket}/assign-public",
+                    json={"reason": "Strong community potential."},
+                    headers=authz(gtok))
+    assert r.status_code == 200, r.text
+    body = _track(db, owner, ticket)
+    assert body["government_review"]["resolution_type"] == "PUBLIC"
+    assert body["government_review"]["decision_reason"] == \
+        "Strong community potential."
+
+
+def test_government_issue_records_government_resolution(db):
+    owner = make_user(db)
+    official = make_official(db)
+    ticket = submit(db, owner, dict(APPROVABLE_PROBLEM)).json()["ticket"]
+    gtok = gov_token(db, official)
+    r = client.post(f"{GOV}/requests/{ticket}/mark-government-issue",
+                    json={"reason": "Needs departmental handling."},
+                    headers=authz(gtok))
+    assert r.status_code == 200, r.text
+    body = _track(db, owner, ticket)
+    assert body["status"] == "GOVERNMENT_ISSUE"
+    assert body["government_review"]["resolution_type"] == "GOVERNMENT"
+    assert body["government_review"]["decision_reason"] == \
+        "Needs departmental handling."
+
+
+def test_pending_has_no_resolution_type(db):
+    owner = make_user(db)
+    ticket = submit(db, owner, dict(APPROVABLE_PROBLEM)).json()["ticket"]
+    body = _track(db, owner, ticket)
+    assert body["government_review"]["resolution_type"] is None
+    assert body["government_review"]["decision_reason"] is None
+
+
 # 20. escalation claims no acceptance -----------------------------------------------------
 def test_escalation_never_claims_acceptance(db):
     from datetime import datetime, timezone

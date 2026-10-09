@@ -118,23 +118,50 @@ describe("request detail", () => {
     expect(rendered.container.textContent).toMatch(/system/);
   });
 
-  it("shows all three actions while pending", async () => {
+  it("shows approve and info actions while pending", async () => {
     mockDetail(detailPayload("PENDING"));
     renderDetail();
     await waitFor(() => {
-      expect(screen.getByText("Assign to Public")).toBeTruthy();
+      expect(screen.getByText("Approve")).toBeTruthy();
     });
-    expect(screen.getByText("Government Issue")).toBeTruthy();
     expect(screen.getByText("Request More Information")).toBeTruthy();
   });
 
-  it("requires a reason for government issue", async () => {
+  it("approve requires a resolution type selection", async () => {
+    mockDetail(detailPayload("PENDING"));
+    renderDetail();
+    await waitFor(() => screen.getByText("Approve"));
+    fireEvent.click(screen.getByText("Approve"));
+    const submit = screen.getByRole("dialog").querySelector("button[type=submit]");
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(screen.getByRole("radio", { name: /Public Challenge/ }));
+    expect(submit.disabled).toBe(false);
+  });
+
+  it("approve as public challenge needs no reason", async () => {
     const calls = [];
     mockDetail(detailPayload("PENDING"), (a, b) => calls.push([a, b]));
     renderDetail();
-    await waitFor(() => screen.getByText("Government Issue"));
-    fireEvent.click(screen.getByText("Government Issue"));
-    const submit = screen.getByText("Mark Government Issue");
+    await waitFor(() => screen.getByText("Approve"));
+    fireEvent.click(screen.getByText("Approve"));
+    fireEvent.click(screen.getByRole("radio", { name: /Public Challenge/ }));
+    fireEvent.click(screen.getByRole("dialog").querySelector("button[type=submit]"));
+    await waitFor(() => {
+      expect(screen.getByText("Routing decision recorded.")).toBeTruthy();
+    });
+    expect(calls).toEqual([["assign", { reason: null }]]);
+  });
+
+  it("approve as government issue requires a reason", async () => {
+    const calls = [];
+    mockDetail(detailPayload("PENDING"), (a, b) => calls.push([a, b]));
+    const rendered = renderDetail();
+    await waitFor(() => screen.getByText("Approve"));
+    fireEvent.click(screen.getByText("Approve"));
+    const issueRadio = rendered.container.querySelector(
+      'input[name="resolution-type"][value="issue"]');
+    fireEvent.click(issueRadio);
+    const submit = screen.getByRole("dialog").querySelector("button[type=submit]");
     expect(submit.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Reason \(required\)/), {
       target: { value: "Needs departmental handling." },
@@ -171,7 +198,8 @@ describe("request detail", () => {
       await waitFor(() => {
         expect(screen.getByText(/No routing actions are available/)).toBeTruthy();
       });
-      expect(screen.queryByText("Assign to Public")).toBeNull();
+    expect(screen.queryByText("Approve")).toBeNull();
+    expect(screen.queryByText("Request More Information")).toBeNull();
       unmount();
       vi.unstubAllGlobals();
     }
@@ -217,3 +245,4 @@ describe("request detail", () => {
     });
   });
 });
+

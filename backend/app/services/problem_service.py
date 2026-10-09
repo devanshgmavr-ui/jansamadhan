@@ -204,6 +204,32 @@ def government_info_for(db: Session, problem: Problem) -> dict | None:
     review = government_review_service.get_for_problem(db, problem.id)
     if review is None:
         return None
+    # Phase 1 classification is the persisted decision itself: assigning to
+    # the public means PUBLIC challenge, marking a government issue means
+    # GOVERNMENT handling. The remark is the reason recorded on the latest
+    # terminal decision audit event.
+    resolution = {
+        "ASSIGNED_TO_PUBLIC": "PUBLIC",
+        "GOVERNMENT_ISSUE": "GOVERNMENT",
+    }.get(review.status)
+    decision_reason = None
+    if resolution is not None:
+        from app.models.government import GovernmentAction
+
+        last_decision = (
+            db.execute(
+                select(GovernmentAction)
+                .where(
+                    GovernmentAction.problem_id == problem.id,
+                    GovernmentAction.new_status == review.status,
+                )
+                .order_by(GovernmentAction.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+        if last_decision is not None and (last_decision.reason or "").strip():
+            decision_reason = last_decision.reason
     return {
         "review_status": review.status,
         "info_request": review.info_request,
@@ -211,6 +237,8 @@ def government_info_for(db: Session, problem: Problem) -> dict | None:
         "sla_due_at": review.sla_due_at,
         "expired": government_review_service.is_expired(review),
         "escalation_flag": review.escalation_flag,
+        "resolution_type": resolution,
+        "decision_reason": decision_reason,
     }
 
 

@@ -125,6 +125,58 @@ describe("TrackProblem government updates", () => {
     expect(screen.getAllByText(/Government Review/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/network down/)).toBeNull();
   });
+
+  it("shows Public Challenge resolution with the official remark", async () => {
+    stubTrackSequence([
+      baseTrack({
+        status: "OPEN",
+        government_review: {
+          review_status: "ASSIGNED_TO_PUBLIC",
+          info_request: null,
+          pending_since: null,
+          sla_due_at: null,
+          expired: false,
+          escalation_flag: false,
+          resolution_type: "PUBLIC",
+          decision_reason: "Strong community potential.",
+        },
+      }),
+    ]);
+    vi.useFakeTimers();
+    renderTrack();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(screen.getAllByText(/Resolution Type/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Public Challenge/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Strong community potential/).length).toBeGreaterThan(0);
+  });
+
+  it("shows Government Issue resolution with the official remark", async () => {
+    stubTrackSequence([
+      baseTrack({
+        status: "GOVERNMENT_ISSUE",
+        government_review: {
+          review_status: "GOVERNMENT_ISSUE",
+          info_request: null,
+          pending_since: null,
+          sla_due_at: null,
+          expired: false,
+          escalation_flag: false,
+          resolution_type: "GOVERNMENT",
+          decision_reason: "Requires departmental handling.",
+        },
+      }),
+    ]);
+    vi.useFakeTimers();
+    renderTrack();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(screen.getAllByText(/Resolution Type/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Government Issue/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Requires departmental handling/).length).toBeGreaterThan(0);
+  });
 });
 
 

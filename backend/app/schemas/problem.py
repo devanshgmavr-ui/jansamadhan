@@ -51,6 +51,12 @@ class GovernmentReviewInfo(BaseModel):
     sla_due_at: datetime | None = None
     expired: bool = False
     escalation_flag: bool = False
+    # Phase 1 decision classification, derived from the persisted review
+    # state (ASSIGNED_TO_PUBLIC -> PUBLIC, GOVERNMENT_ISSUE -> GOVERNMENT).
+    # Stored implicitly by the decision, never a separate column.
+    resolution_type: str | None = None
+    # Public-facing remark recorded with the terminal decision, if any.
+    decision_reason: str | None = None
 
 
 class ProblemOut(BaseModel):

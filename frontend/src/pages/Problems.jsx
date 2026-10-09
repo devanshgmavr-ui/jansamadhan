@@ -331,6 +331,15 @@ export function TrackProblem() {
       {gov && gov.escalation_flag && (
         <p className="muted">The review window was exceeded; the request was escalated in the review queue.</p>
       )}
+      {gov && (gov.review_status === "ASSIGNED_TO_PUBLIC" || gov.review_status === "GOVERNMENT_ISSUE") && (
+        <div className="card">
+          <p>
+            <strong>Resolution Type:</strong>{" "}
+            {gov.review_status === "ASSIGNED_TO_PUBLIC" ? "Public Challenge" : "Government Issue"}
+          </p>
+          {gov.decision_reason && <p>{gov.decision_reason}</p>}
+        </div>
+      )}
       <div className="card">
         {data.stages.map((s, i) => (
           <Fragment key={s.key}>

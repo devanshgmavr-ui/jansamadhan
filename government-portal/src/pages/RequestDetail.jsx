@@ -6,6 +6,96 @@ import { formatDue } from "../utils/sla";
 
 const ROUTABLE = ["PENDING", "AUTO_ESCALATED"];
 
+function ApproveDialog({ onClose, onSubmit }) {
+  const [choice, setChoice] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const needsReason = choice === "issue";
+  const valid = (choice === "public" || choice === "issue") && (!needsReason || reason.trim().length > 0);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!choice) {
+      setError("Select Public Challenge or Government Issue to approve.");
+      return;
+    }
+    if (!valid) {
+      setError("A reason is required for a Government Issue.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSubmit(choice, reason.trim());
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="dialog-backdrop" onClick={onClose}>
+      <div
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Approve request"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3>Approve Request</h3>
+        <p>
+          Approval requires a decision on how the complaint will be
+          resolved. This choice is stored permanently.
+        </p>
+        <form onSubmit={submit}>
+          <Field label="Resolution type (required)">
+            <label style={{ display: "block", marginBottom: "0.4rem" }}>
+              <input
+                type="radio"
+                name="resolution-type"
+                value="public"
+                checked={choice === "public"}
+                onChange={() => setChoice("public")}
+              />{" "}
+              Public Challenge — visible publicly; universities, industries
+              and researchers may later submit solutions.
+            </label>
+            <label style={{ display: "block" }}>
+              <input
+                type="radio"
+                name="resolution-type"
+                value="issue"
+                checked={choice === "issue"}
+                onChange={() => setChoice("issue")}
+              />{" "}
+              Government Issue — handled internally; no public solutions.
+            </label>
+          </Field>
+          <Field label={needsReason ? "Reason (required)" : "Note for the audit record (optional)"}>
+            <textarea
+              required={needsReason}
+              rows={4}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </Field>
+          <Alert>{error}</Alert>
+          <div className="btn-row">
+            <button className="btn" type="submit" disabled={busy || !valid}>
+              {busy ? "Submitting..." : "Approve"}
+            </button>
+            <button className="btn secondary" type="button" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function ActionDialog({ title, explanation, reasonLabel, submitLabel, optional = false, onClose, onSubmit }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
@@ -183,11 +273,8 @@ export function RequestDetail() {
         <div className="card">
           <h3>Routing Actions</h3>
           <div className="btn-row">
-            <button className="btn" onClick={() => setDialog("assign")}>
-              Assign to Public
-            </button>
-            <button className="btn secondary" onClick={() => setDialog("issue")}>
-              Government Issue
+            <button className="btn" onClick={() => setDialog("approve")}>
+              Approve
             </button>
             <button className="btn secondary" onClick={() => setDialog("info")}>
               Request More Information
@@ -220,29 +307,16 @@ export function RequestDetail() {
           </p>
         ))}
       </div>
-      {dialog === "assign" && (
-        <ActionDialog
-          title="Assign to Public"
-          explanation="This will make the problem eligible for the public problem-solving workflow (solutions, collaboration, projects)."
-          reasonLabel="Note for the audit record (optional)"
-          submitLabel="Assign to Public"
-          optional
+      {dialog === "approve" && (
+        <ApproveDialog
           onClose={() => setDialog(null)}
-          onSubmit={(reason) =>
+          onSubmit={(choice, reason) =>
             afterAction(() =>
-              govRequestsApi.assignPublic(ticket, reason || undefined)
+              choice === "public"
+                ? govRequestsApi.assignPublic(ticket, reason || undefined)
+                : govRequestsApi.markIssue(ticket, reason)
             )
           }
-        />
-      )}
-      {dialog === "issue" && (
-        <ActionDialog
-          title="Government Issue"
-          explanation="The problem stays out of the public workflow and is handled as a government-side issue."
-          reasonLabel="Reason (required)"
-          submitLabel="Mark Government Issue"
-          onClose={() => setDialog(null)}
-          onSubmit={(reason) => afterAction(() => govRequestsApi.markIssue(ticket, reason))}
         />
       )}
       {dialog === "info" && (
