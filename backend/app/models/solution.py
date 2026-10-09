@@ -1,7 +1,8 @@
 import enum
 import uuid
+from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +20,19 @@ class SolutionStatus(str, enum.Enum):
     PILOT = "PILOT"
     IMPLEMENTED = "IMPLEMENTED"
     IMPACT_RECORDED = "IMPACT_RECORDED"
+
+
+class SolutionReviewStatus(str, enum.Enum):
+    """Phase 3 government review of a submitted solution. Independent of
+    the development lifecycle above: officials approve/reject/request
+    changes and select at most one winning solution per problem."""
+
+    SUBMITTED = "SUBMITTED"
+    UNDER_REVIEW = "UNDER_REVIEW"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CHANGES_REQUESTED = "CHANGES_REQUESTED"
+    SELECTED = "SELECTED"
 
 
 # Linear lifecycle. Only forward, one step at a time. Stage 9 advances
@@ -70,6 +84,28 @@ class Solution(Base):
     pdf_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default=SolutionStatus.SUBMITTED.value
+    )
+    # Phase 3 extended proposal fields (all optional).
+    implementation_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estimated_cost: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    estimated_timeline: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Phase 3 government review. Selection is exclusive per problem
+    # (is_selected); rejected solutions are kept, never deleted.
+    review_status: Mapped[str] = mapped_column(
+        String(30), nullable=False,
+        default=SolutionReviewStatus.SUBMITTED.value,
+    )
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("government_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    is_selected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

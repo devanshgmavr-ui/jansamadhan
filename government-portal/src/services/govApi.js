@@ -120,4 +120,38 @@ export const govRequestsApi = {
       method: "POST",
       body: { reason },
     }),
+  requestSolutions: (ticket) => govApi(`/requests/${ticket}/solutions`),
+  reviewSolution: (ticket, decision, reason) =>
+    govApi(`/solutions/${ticket}/review`, {
+      method: "POST",
+      body: { decision, reason: reason || null },
+    }),
+  selectSolution: (ticket) =>
+    govApi(`/solutions/${ticket}/select`, { method: "POST" }),
+  listImplementation: (ticket) => govApi(`/requests/${ticket}/implementation`),
+  async createImplementation(ticket, { stage, title, description, files }) {
+    const token = getToken();
+    const form = new FormData();
+    form.append("stage", stage);
+    form.append("title", title);
+    if (description) form.append("description", description);
+    (files || []).forEach((f) => form.append("files", f));
+    const res = await fetch(`${BASE}/government/requests/${ticket}/implementation`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      const err = new Error(formatDetail(data.detail, res.status));
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
 };

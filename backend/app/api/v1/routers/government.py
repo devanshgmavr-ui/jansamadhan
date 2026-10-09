@@ -11,7 +11,7 @@ service, and serialize. Static routes are registered before /{ticket} so
 import json as _json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -36,6 +36,7 @@ from app.schemas.government import (
     GovQueueItem,
     GovQueueOut,
     GovReasonBody,
+    GovSolutionReviewBody,
     GovRequestDetailOut,
     GovSweepOut,
     GovTokenResponse,
@@ -586,3 +587,167 @@ def gov_request_information(
         info_request=data.reason.strip(),
     )
     return _action_out(problem, review)
+
+
+# --------------------------------------------------------------------------
+# Phase 3: solution review/selection + implementation tracking
+# --------------------------------------------------------------------------
+
+def _solution_out(db: Session, solution) -> dict:
+    from app.services import solution_service
+
+    return {
+        "ticket": solution.ticket,
+        "problem_ticket": solution_service.problem_ticket_of(db, solution),
+        "title": solution.title,
+        "short_description": solution.short_description,
+        "status": solution.status,
+        "review_status": solution.review_status,
+        "review_reason": solution.review_reason,
+        "reviewed_at": solution.reviewed_at,
+        "is_selected": solution.is_selected,
+        "created_at": solution.created_at,
+        "updated_at": solution.updated_at,
+    }
+
+
+@router.get("/requests/{ticket}/solutions")
+def gov_request_solutions(
+    ticket: str,
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    """All submitted solutions of one routed problem, newest last, for
+    official review. Officials only; submitters use the public API."""
+    from app.services import solution_service
+
+    problem, _ = _gov_request_or_404(db, ticket)
+    rows, _ = solution_service.solutions_for_government(db, problem.ticket)
+    return {"ticket": problem.ticket, "total": len(rows),
+            "items": [_solution_out(db, s) for s in rows]}
+
+
+@router.post("/solutions/{ticket}/review")
+def gov_review_solution(
+    ticket: str,
+    data: GovSolutionReviewBody,
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    """Approve / reject / request-modification on a solution. Rejected
+    solutions are kept, never deleted. Static route: registered before
+    any /{ticket} capture could shadow it (solutions live outside
+    /requests)."""
+    from app.services import solution_service
+
+    solution = solution_service.review_solution(
+        db, official, ticket, data.decision.strip().upper(),
+        reason=(data.reason or "").strip() or None,
+    )
+    return _solution_out(db, solution)
+
+
+@router.post("/solutions/{ticket}/select")
+def gov_select_solution(
+    ticket: str,
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    """Mark the winning solution. Exactly one per problem: any previous
+    selection is cleared (archived, never deleted). Requires APPROVED."""
+    from app.services import solution_service
+
+    solution = solution_service.select_solution(db, official, ticket)
+    return _solution_out(db, solution)
+
+
+@router.get("/requests/{ticket}/implementation")
+def gov_list_implementation(
+    ticket: str,
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    """Implementation updates of a government issue, oldest first."""
+    from app.services import implementation_service
+
+    problem, _ = _gov_request_or_404(db, ticket)
+    rows = implementation_service.list_updates(db, problem.id)
+    attach = implementation_service.attachments_for(db, [u.id for u in rows])
+    return {
+        "ticket": problem.ticket,
+        "total": len(rows),
+        "items": [_implementation_out(problem.ticket, u, attach.get(u.id, []))
+                  for u in rows],
+    }
+
+
+@router.post("/requests/{ticket}/implementation", status_code=201)
+def gov_create_implementation(
+    ticket: str,
+    stage: str = Form(min_length=3, max_length=40),
+    title: str = Form(min_length=5, max_length=200),
+    description: str | None = Form(default=None, max_length=5000),
+    files: list[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    """Append a progress update (with optional documents/images) to a
+    government issue. Append-only; stage must use the closed vocabulary."""
+    from app.services import implementation_service
+
+    problem, _ = _gov_request_or_404(db, ticket)
+    update = implementation_service.create_update(
+        db, official, problem.ticket, stage=stage.strip().upper(),
+        title=title, description=description, files=files,
+    )
+    attach = implementation_service.attachments_for(db, [update.id])
+    return _implementation_out(
+        problem.ticket, update, attach.get(update.id, []))
+
+
+@router.get("/requests/{ticket}/implementation/attachments/{attachment_id}/download")
+def gov_download_implementation_attachment(
+    ticket: str,
+    attachment_id: str,
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    from app.services import implementation_service
+    from fastapi.responses import Response
+
+    problem, _ = _gov_request_or_404(db, ticket)
+    own_ids = {u.id for u in implementation_service.list_updates(db, problem.id)}
+    record, content = implementation_service.read_attachment(
+        db, attachment_id)
+    if record.update_id not in own_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found."
+        )
+    return Response(
+        content=content,
+        media_type=record.mime_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{record.original_name}"'
+        },
+    )
+
+
+def _implementation_out(ticket: str, update, attachments: list) -> dict:
+    return {
+        "id": update.id,
+        "problem_ticket": ticket,
+        "stage": update.stage,
+        "title": update.title,
+        "description": update.description,
+        "attachments": [
+            {
+                "id": a.id,
+                "original_name": a.original_name,
+                "mime_type": a.mime_type,
+                "size_bytes": a.size_bytes,
+                "created_at": a.created_at,
+            }
+            for a in attachments
+        ],
+        "created_at": update.created_at,
+    }

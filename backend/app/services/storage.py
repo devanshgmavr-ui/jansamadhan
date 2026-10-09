@@ -23,6 +23,8 @@ _MAGIC = {
 
 NAMESPACE_PROBLEM_ATTACHMENTS = "problem-attachments"
 NAMESPACE_SOLUTION_PDFS = "solution-pdfs"
+NAMESPACE_SOLUTION_ATTACHMENTS = "solution-attachments"
+NAMESPACE_IMPLEMENTATION_ATTACHMENTS = "implementation-attachments"
 
 
 class StorageProvider(Protocol):

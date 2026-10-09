@@ -120,7 +120,7 @@ export default function Home() {
                 <span className="badge">{item.ticket}</span>{" "}
                 <span className="badge">{resolutionBadge(item)}</span>
               </p>
-              <h3>{item.title}</h3>
+              <h3><Link to={`/approved/${item.ticket}`}>{item.title}</Link></h3>
               <dl className="kv">
                 <dt>Category</dt><dd>{item.category}</dd>
                 <dt>Location</dt><dd>{item.location}</dd>

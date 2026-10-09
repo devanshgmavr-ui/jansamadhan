@@ -7,6 +7,7 @@ from app.db.database import get_db
 from app.models.solution import Solution
 from app.models.user import User
 from app.schemas.solution import (
+    SolutionAttachmentOut,
     SolutionListOut,
     SolutionOut,
     SolutionStatusUpdate,
@@ -33,9 +34,26 @@ def _to_out(
         expected_impact=solution.expected_impact,
         contributors=solution.contributors,
         estimated_resources=solution.estimated_resources,
+        implementation_plan=solution.implementation_plan,
+        estimated_cost=solution.estimated_cost,
+        estimated_timeline=solution.estimated_timeline,
         pdf_name=solution.pdf_original_name,
         pdf_size_bytes=solution.pdf_size_bytes,
         status=solution.status,
+        review_status=solution.review_status,
+        review_reason=solution.review_reason,
+        reviewed_at=solution.reviewed_at,
+        is_selected=solution.is_selected,
+        attachments=[
+            SolutionAttachmentOut(
+                id=a.id,
+                original_name=a.original_name,
+                mime_type=a.mime_type,
+                size_bytes=a.size_bytes,
+                created_at=a.created_at,
+            )
+            for a in solution_service.solution_attachments_of(db, solution)
+        ],
         submitter_account_type=solution_service.submitter_label(db, solution),
         mine=viewer is not None and viewer.id == solution.submitter_id,
         created_at=solution.created_at,
@@ -49,6 +67,8 @@ def _to_list(db: Session, solution: Solution) -> SolutionListOut:
         problem_ticket=solution_service.problem_ticket_of(db, solution),
         title=solution.title,
         status=solution.status,
+        review_status=solution.review_status,
+        is_selected=solution.is_selected,
         created_at=solution.created_at,
         updated_at=solution.updated_at,
     )
@@ -63,6 +83,9 @@ def submit_solution(
     expected_impact: str = Form(min_length=10, max_length=2000),
     contributors: str | None = Form(default=None, max_length=500),
     estimated_resources: str | None = Form(default=None, max_length=500),
+    implementation_plan: str | None = Form(default=None, max_length=5000),
+    estimated_cost: str | None = Form(default=None, max_length=120),
+    estimated_timeline: str | None = Form(default=None, max_length=120),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -78,6 +101,9 @@ def submit_solution(
         expected_impact=expected_impact,
         contributors=contributors,
         estimated_resources=estimated_resources,
+        implementation_plan=implementation_plan,
+        estimated_cost=estimated_cost,
+        estimated_timeline=estimated_timeline,
         pdf=file,
     )
     return _to_out(db, solution, user)
@@ -205,3 +231,73 @@ def my_solutions(
         "limit": limit,
         "items": [_to_list(db, s) for s in rows],
     }
+
+
+@router.get("/solutions/{ticket}/attachments", response_model=list[SolutionAttachmentOut])
+def list_solution_attachments(
+    ticket: str,
+    db: Session = Depends(get_db),
+    viewer: User | None = Depends(get_optional_user),
+):
+    """Supporting documents of one solution (Phase 3). Same visibility as
+    the solution itself."""
+    solution = solution_service.get_solution(db, ticket, viewer)
+    return [
+        SolutionAttachmentOut(
+            id=a.id,
+            original_name=a.original_name,
+            mime_type=a.mime_type,
+            size_bytes=a.size_bytes,
+            created_at=a.created_at,
+        )
+        for a in solution_service.solution_attachments_of(db, solution)
+    ]
+
+
+@router.post("/solutions/{ticket}/attachments", response_model=SolutionAttachmentOut, status_code=201)
+def upload_solution_attachment(
+    ticket: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Submitter-only supporting document upload (Phase 3). Same file
+    rules as problem attachments."""
+    record = solution_service.add_solution_attachment(db, user, ticket, file)
+    return SolutionAttachmentOut(
+        id=record.id,
+        original_name=record.original_name,
+        mime_type=record.mime_type,
+        size_bytes=record.size_bytes,
+        created_at=record.created_at,
+    )
+
+
+@router.get("/solutions/{ticket}/attachments/{attachment_id}/download")
+def download_solution_attachment(
+    ticket: str,
+    attachment_id: str,
+    db: Session = Depends(get_db),
+    viewer: User | None = Depends(get_optional_user),
+):
+    record, content = solution_service.read_solution_attachment(
+        db, viewer, ticket, attachment_id
+    )
+    return Response(
+        content=content,
+        media_type=record.mime_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{record.original_name}"'
+        },
+    )
+
+
+@router.delete("/solutions/{ticket}/attachments/{attachment_id}", status_code=204)
+def delete_solution_attachment(
+    ticket: str,
+    attachment_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    solution_service.delete_solution_attachment(db, user, ticket, attachment_id)
+    return None

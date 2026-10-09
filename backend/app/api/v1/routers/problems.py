@@ -24,6 +24,7 @@ from app.schemas.problem import (
     TransparencyStats,
     VersionOut,
 )
+from app.schemas.solution import TransparencyDetailOut
 from app.services import discovery_service, problem_service
 from app.services.ai import problem_review_service
 
@@ -138,6 +139,48 @@ def transparency_statistics(db: Session = Depends(get_db)):
     """Dynamic dashboard counters (Phase 2). Single grouped count query.
     Must stay registered before /{ticket}."""
     return TransparencyStats(**discovery_service.transparency_stats(db))
+
+
+@router.get("/transparency/{ticket}", response_model=TransparencyDetailOut)
+def transparency_detail(ticket: str, db: Session = Depends(get_db)):
+    """Public detail for one approved complaint (Phase 3). Challenges
+    include solutions + winning solution; issues include the implementation
+    timeline. Anything else is a flat 404. Must stay before /{ticket}."""
+    detail = discovery_service.transparency_detail(db, ticket)
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Problem not found."
+        )
+    return TransparencyDetailOut(**detail)
+
+
+@router.get("/transparency/{ticket}/updates/{update_id}/attachments/{attachment_id}/download")
+def transparency_implementation_download(
+    ticket: str, update_id: str, attachment_id: str,
+    db: Session = Depends(get_db),
+):
+    """Public implementation-attachment download (Phase 3). Only for
+    transparency-visible complaints; anything else is a flat 404."""
+    from app.services import implementation_service
+
+    detail = discovery_service.transparency_detail(db, ticket)
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Problem not found."
+        )
+    own_ids = {u["id"] for u in detail["implementation_updates"]}
+    record, content = implementation_service.read_attachment(db, attachment_id)
+    if record.update_id not in own_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found."
+        )
+    return Response(
+        content=content,
+        media_type=record.mime_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{record.original_name}"'
+        },
+    )
 
 
 @router.get("/{ticket}", response_model=ProblemOut)

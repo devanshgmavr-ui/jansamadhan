@@ -154,6 +154,13 @@ class GovReasonBody(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class GovSolutionReviewBody(BaseModel):
+    # APPROVED | REJECTED | CHANGES_REQUESTED. Reason required for
+    # REJECTED and CHANGES_REQUESTED (service-enforced).
+    decision: str = Field(min_length=3, max_length=30)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
 class GovAssignBody(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
 

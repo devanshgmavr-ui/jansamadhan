@@ -154,6 +154,196 @@ function ActionDialog({ title, explanation, reasonLabel, submitLabel, optional =
   );
 }
 
+const IMPLEMENTATION_STAGES = [
+  "INVESTIGATION_STARTED",
+  "SURVEY_COMPLETED",
+  "ADMINISTRATIVE_APPROVAL",
+  "BUDGET_APPROVED",
+  "WORK_ORDER_ISSUED",
+  "IMPLEMENTATION_STARTED",
+  "WORK_IN_PROGRESS",
+  "TESTING",
+  "COMPLETED",
+  "CLOSED",
+];
+
+function SolutionsReview({ ticket, onChanged }) {
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sortNewest, setSortNewest] = useState(true);
+
+  const load = useCallback(() => {
+    govRequestsApi
+      .requestSolutions(ticket)
+      .then((d) => setItems(d.items ?? []))
+      .catch((e) => setError(e.message));
+  }, [ticket]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const act = async (fn) => {
+    setError("");
+    setBusy(true);
+    try {
+      await fn();
+      load();
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const ordered = [...items].sort((a, b) =>
+    sortNewest
+      ? new Date(b.created_at) - new Date(a.created_at)
+      : new Date(a.created_at) - new Date(b.created_at)
+  );
+
+  return (
+    <div className="card">
+      <h3>Submitted Solutions ({items.length})</h3>
+      {error && <Alert>{error}</Alert>}
+      {items.length > 1 && (
+        <button className="btn secondary" onClick={() => setSortNewest((v) => !v)}>
+          Sort: {sortNewest ? "Newest first" : "Oldest first"}
+        </button>
+      )}
+      {items.length === 0 && <p>No solutions submitted yet.</p>}
+      {ordered.map((s) => (
+        <div key={s.ticket} style={{ marginBottom: "0.8rem" }}>
+          <p>
+            <strong>{s.title}</strong> <span className="badge">{s.ticket}</span>{" "}
+            <span className="badge">{s.review_status}</span>{" "}
+            {s.is_selected && <span className="badge warn">Selected</span>}
+          </p>
+          <p className="muted">{s.short_description}</p>
+          {s.review_reason && <p>Official review: {s.review_reason}</p>}
+          {!s.is_selected && (
+            <div className="btn-row">
+              <button className="btn secondary" disabled={busy}
+                onClick={() => act(() => govRequestsApi.reviewSolution(s.ticket, "APPROVED", reason || null))}>
+                Approve
+              </button>
+              <button className="btn secondary" disabled={busy}
+                onClick={() => act(() => govRequestsApi.reviewSolution(s.ticket, "REJECTED", reason))}>
+                Reject
+              </button>
+              <button className="btn secondary" disabled={busy}
+                onClick={() => act(() => govRequestsApi.reviewSolution(s.ticket, "CHANGES_REQUESTED", reason))}>
+                Request Modification
+              </button>
+              {s.review_status === "APPROVED" && (
+                <button className="btn" disabled={busy}
+                  onClick={() => act(() => govRequestsApi.selectSolution(s.ticket))}>
+                  Select Winner
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+      <Field label="Review reason (required to reject or request modification)">
+        <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
+      </Field>
+    </div>
+  );
+}
+
+function ImplementationTracker({ ticket }) {
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState("");
+  const [stage, setStage] = useState(IMPLEMENTATION_STAGES[0]);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    govRequestsApi
+      .listImplementation(ticket)
+      .then((d) => setItems(d.items ?? []))
+      .catch((e) => setError(e.message));
+  }, [ticket]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!title.trim()) {
+      setError("A progress title is required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await govRequestsApi.createImplementation(ticket, {
+        stage,
+        title: title.trim(),
+        description: description.trim() || null,
+        files,
+      });
+      setTitle("");
+      setDescription("");
+      setFiles([]);
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <h3>Implementation Progress ({items.length})</h3>
+      {error && <Alert>{error}</Alert>}
+      {items.length === 0 && <p>No progress updates published yet.</p>}
+      {items.map((u) => (
+        <div key={u.id} style={{ marginBottom: "0.8rem" }}>
+          <p>
+            <strong>{u.stage.replace(/_/g, " ")}</strong>: {u.title}{" "}
+            <span className="muted">· {new Date(u.created_at).toLocaleString()}</span>
+          </p>
+          {u.description && <p style={{ whiteSpace: "pre-wrap" }}>{u.description}</p>}
+          {u.attachments.map((a) => (
+            <p key={a.id} className="muted">{a.original_name}</p>
+          ))}
+        </div>
+      ))}
+      <h3>Publish Progress Update</h3>
+      <form onSubmit={submit}>
+        <Field label="Stage">
+          <select value={stage} onChange={(e) => setStage(e.target.value)}>
+            {IMPLEMENTATION_STAGES.map((s) => (
+              <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Progress title">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        </Field>
+        <Field label="Description (optional)">
+          <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </Field>
+        <Field label="Documents / images (optional)">
+          <input type="file" multiple onChange={(e) => setFiles([...e.target.files])} />
+        </Field>
+        <button className="btn" disabled={busy} type="submit">
+          {busy ? "Publishing..." : "Publish Update"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export function RequestDetail() {
   const { ticket } = useParams();
   const [data, setData] = useState(null);
@@ -290,9 +480,14 @@ export function RequestDetail() {
           </p>
         </div>
       )}
+      {gov.review_status === "ASSIGNED_TO_PUBLIC" && (
+        <SolutionsReview ticket={ticket} onChanged={load} />
+      )}
+      {gov.review_status === "GOVERNMENT_ISSUE" && (
+        <ImplementationTracker ticket={ticket} />
+      )}
       <div className="card">
-        <h3>Action History (Audit Trail)</h3>
-        {data.history.length === 0 && <p>No recorded actions yet.</p>}
+        <h3>Action History (Audit Trail)</h3>        {data.history.length === 0 && <p>No recorded actions yet.</p>}
         {data.history.map((h, i) => (
           <p key={`${h.created_at}-${i}`}>
             <strong>{h.action}</strong>{" "}

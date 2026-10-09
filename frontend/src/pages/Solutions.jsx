@@ -16,7 +16,7 @@ const PDF_GUIDE = [
 export function SubmitSolution() {
   const { ticket } = useParams();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ title: "", short_description: "", skills: "", expected_impact: "", contributors: "", estimated_resources: "" });
+  const [form, setForm] = useState({ title: "", short_description: "", skills: "", expected_impact: "", contributors: "", estimated_resources: "", implementation_plan: "", estimated_cost: "", estimated_timeline: "" });
   const [file, setFile] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,6 +49,9 @@ export function SubmitSolution() {
         <Field label="Expected Impact"><textarea required minLength={10} rows={3} onChange={set("expected_impact")} /></Field>
         <Field label="Contributors / Team Members"><input maxLength={500} onChange={set("contributors")} /></Field>
         <Field label="Estimated Resources"><input maxLength={500} onChange={set("estimated_resources")} /></Field>
+        <Field label="Implementation Plan (optional)"><textarea rows={3} maxLength={5000} onChange={set("implementation_plan")} /></Field>
+        <Field label="Estimated Cost (optional)"><input maxLength={120} onChange={set("estimated_cost")} /></Field>
+        <Field label="Estimated Timeline (optional)"><input maxLength={120} onChange={set("estimated_timeline")} /></Field>
         <Field label="Solution PDF (required, max 15 MB)">
           <input required type="file" accept=".pdf,application/pdf" onChange={(e) => setFile(e.target.files[0])} />
         </Field>
@@ -66,20 +69,49 @@ export function SolutionDetail() {
   const { ticket } = useParams();
   const [sol, setSol] = useState(null);
   const [error, setError] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [file, setFile] = useState(null);
   // Navigation-provided flag is read once as initial state so no effect
   // needs to synchronize it into state after mount.
   const [fresh] = useState(() => Boolean(window.history.state?.usr?.fresh));
-  useEffect(() => {
-    solutionsApi.get(ticket).then(setSol).catch((e) => setError(e.message));
-  }, [ticket]);
+  const load = () => {
+    solutionsApi.get(ticket).then((s) => {
+      setSol(s);
+      solutionsApi.solutionAttachments(ticket).then(setAttachments).catch(() => setAttachments([]));
+    }).catch((e) => setError(e.message));
+  };
+  useEffect(load, [ticket]);
 
   if (error) return <Alert>{error}</Alert>;
   if (!sol) return <p>Loading...</p>;
+  const reviewLabel = { SUBMITTED: "Submitted", UNDER_REVIEW: "Under Review", APPROVED: "Approved", REJECTED: "Rejected", CHANGES_REQUESTED: "Changes Requested", SELECTED: "Selected Solution" }[sol.review_status] ?? sol.review_status;
+  const uploadAttachment = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!file) return;
+    try {
+      await solutionsApi.uploadSolutionAttachment(ticket, file);
+      setFile(null);
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  const removeAttachment = async (id, name) => {
+    if (!window.confirm(`Delete attachment "${name}"? This cannot be undone.`)) return;
+    try {
+      await solutionsApi.removeSolutionAttachment(ticket, id);
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
   return (
     <>
       {fresh && <div className="alert success">Solution submitted successfully. Problem Ticket: <strong>{sol.problem_ticket}</strong> · Solution Ticket: <strong>{sol.ticket}</strong></div>}
       <h2>{sol.title}</h2>
-      <p><span className="badge">{sol.ticket}</span> <span className="badge ok">{sol.status.replace(/_/g, " ")}</span></p>
+      <p><span className="badge">{sol.ticket}</span> <span className="badge ok">{sol.status.replace(/_/g, " ")}</span> <span className="badge">{reviewLabel}</span>{sol.is_selected && <span className="badge warn">Winning Solution</span>}</p>
+      {sol.review_reason && <div className="alert info"><strong>Official review:</strong> {sol.review_reason}</div>}
       <div className="card">
         <dl className="kv">
           <div style={{ display: "contents" }}><dt>Problem</dt><dd><Link to={`/problems/${sol.problem_ticket}`}>{sol.problem_ticket}</Link></dd></div>
@@ -87,12 +119,31 @@ export function SolutionDetail() {
           <div style={{ display: "contents" }}><dt>Skills</dt><dd>{sol.skills || "—"}</dd></div>
           <div style={{ display: "contents" }}><dt>Contributors</dt><dd>{sol.contributors || "—"}</dd></div>
           <div style={{ display: "contents" }}><dt>Resources</dt><dd>{sol.estimated_resources || "—"}</dd></div>
+          {sol.implementation_plan && <div style={{ display: "contents" }}><dt>Plan</dt><dd style={{ whiteSpace: "pre-wrap" }}>{sol.implementation_plan}</dd></div>}
+          {sol.estimated_cost && <div style={{ display: "contents" }}><dt>Est. Cost</dt><dd>{sol.estimated_cost}</dd></div>}
+          {sol.estimated_timeline && <div style={{ display: "contents" }}><dt>Est. Timeline</dt><dd>{sol.estimated_timeline}</dd></div>}
           <div style={{ display: "contents" }}><dt>PDF</dt><dd><a href={solutionsApi.downloadUrl(sol.ticket)} target="_blank" rel="noreferrer">{sol.pdf_name}</a></dd></div>
         </dl>
         <h3>Short Description</h3>
         <p style={{ whiteSpace: "pre-wrap" }}>{sol.short_description}</p>
         <h3>Expected Impact</h3>
         <p style={{ whiteSpace: "pre-wrap" }}>{sol.expected_impact}</p>
+        <h3>Supporting Documents ({attachments.length})</h3>
+        {attachments.length === 0 && <p>No supporting documents yet.</p>}
+        {attachments.map((a) => (
+          <p key={a.id}>
+            <a href={solutionsApi.solutionAttachmentUrl(sol.ticket, a.id)} target="_blank" rel="noreferrer">{a.original_name}</a>{" "}
+            {sol.mine && <button className="btn secondary" onClick={() => removeAttachment(a.id, a.original_name)}>Delete</button>}
+          </p>
+        ))}
+        {sol.mine && (
+          <form onSubmit={uploadAttachment}>
+            <Field label="Add supporting document (PDF, PNG, JPG, WEBP, TXT, CSV — max 10 MB)">
+              <input type="file" onChange={(e) => setFile(e.target.files[0])} />
+            </Field>
+            <button className="btn secondary" type="submit">Upload Document</button>
+          </form>
+        )}
       </div>
       <div className="btn-row">
         <Link className="btn secondary" to={`/solutions/${sol.ticket}/track`}>Track Solution</Link>

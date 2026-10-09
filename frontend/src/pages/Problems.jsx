@@ -6,7 +6,7 @@ import { ProblemSolutions } from "./Solutions";
 import { Alert, Field, ProblemStatusBadge } from "../components/ui";
 import { GovernmentReviewCard } from "../components/GovernmentReviewCard";
 import { stageNote, statusDescription } from "../services/problemStatus";
-import { problemsApi } from "../services/api";
+import { problemsApi, solutionsApi } from "../services/api";
 
 const CATEGORIES = ["Education", "Healthcare", "Agriculture", "Environment",
   "Transportation", "Water", "Energy", "Employment", "Accessibility",
@@ -291,15 +291,22 @@ export function TrackProblem() {
   const { ticket } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [solutions, setSolutions] = useState([]);
   const loadedRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
     const load = () => {
       problemsApi.track(ticket).then((fresh) => {
-        if (!cancelled) {
-          loadedRef.current = true;
-          setData(fresh);
-          setError("");
+        if (cancelled) return;
+        loadedRef.current = true;
+        setData(fresh);
+        setError("");
+        if (["OPEN", "COLLABORATION", "IN_DEVELOPMENT", "PILOT", "IMPLEMENTED"].includes(fresh.status)) {
+          solutionsApi.forProblem(ticket, 0, 50).then((d) => {
+            if (!cancelled) setSolutions(d.items ?? []);
+          }).catch(() => {});
+        } else if (!cancelled) {
+          setSolutions([]);
         }
       }).catch((e) => {
         // Never fabricate state on failure: keep the last good snapshot
@@ -357,6 +364,24 @@ export function TrackProblem() {
           <p>Approval Date {new Date(gov.decided_at).toLocaleDateString()}</p>
         )}
       </div>
+      {solutions.length > 0 && (
+        <div className="card">
+          <h3>Solutions ({solutions.length})</h3>
+          {solutions.filter((s) => s.is_selected).map((s) => (
+            <p key={s.ticket}>
+              <strong>Winning solution:</strong>{" "}
+              <Link to={`/solutions/${s.ticket}`}>{s.title}</Link>
+            </p>
+          ))}
+          {solutions.map((s) => (
+            <p key={s.ticket}>
+              <Link to={`/solutions/${s.ticket}`}>{s.title}</Link>{" "}
+              <span className="badge">{s.ticket}</span>{" "}
+              {s.is_selected && <span className="badge warn">Selected</span>}
+            </p>
+          ))}
+        </div>
+      )}
       <div className="btn-row">
         <Link className="btn secondary" to={`/problems/${ticket}`}>View My Ticket</Link>
       </div>

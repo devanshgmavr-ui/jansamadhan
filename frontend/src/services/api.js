@@ -113,6 +113,9 @@ export const problemsApi = {
     return raw(`/problems${q ? `?${q}` : ""}`);
   },
   publicGet: (ticket) => raw(`/problems/${ticket}/public`),
+  transparencyDetail: (ticket) => raw(`/problems/transparency/${ticket}`),
+  implementationAttachmentUrl: (ticket, updateId, attachmentId) =>
+    `${BASE}/problems/transparency/${ticket}/updates/${updateId}/attachments/${attachmentId}/download`,
   transparency: (params) => {
     const qs = new URLSearchParams();
     Object.entries(params || {}).forEach(([k, v]) => { if (v) qs.set(k, v); });
@@ -188,6 +191,26 @@ export const solutionsApi = {
   },
   browse: (skip = 0, limit = 20) => raw(`/solutions?skip=${skip}&limit=${limit}`),
   downloadUrl: (ticket) => `${BASE}/solutions/${ticket}/download`,
+  solutionAttachments: (ticket) => {
+    const tokens = getTokens();
+    const path = `/solutions/${ticket}/attachments`;
+    return tokens?.access_token ? api(path) : raw(path);
+  },
+  async uploadSolutionAttachment(ticket, file) {
+    const tokens = getTokens();
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE}/solutions/${ticket}/attachments`, {
+      method: "POST",
+      headers: tokens?.access_token ? { Authorization: `Bearer ${tokens.access_token}` } : {},
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `Upload failed (${res.status})`);
+    return data;
+  },
+  removeSolutionAttachment: (ticket, id) => api(`/solutions/${ticket}/attachments/${id}`, { method: "DELETE" }),
+  solutionAttachmentUrl: (ticket, id) => `${BASE}/solutions/${ticket}/attachments/${id}/download`,
 };
 
 export const contribApi = {

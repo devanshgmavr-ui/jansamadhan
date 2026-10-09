@@ -244,5 +244,70 @@ describe("request detail", () => {
       expect(screen.getByText("Illegal government transition.")).toBeTruthy();
     });
   });
+
+  it("lists submitted solutions with review actions for challenges", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith("/requests/JS-PS-2026-000009/solutions")) {
+          return { ok: true, status: 200, json: async () => ({ ticket: "T", total: 1, items: [{
+            ticket: "JS-SOL-2026-000001", problem_ticket: "T", title: "Solar pilot",
+            short_description: "Community RO plant.", status: "SUBMITTED",
+            review_status: "APPROVED", review_reason: null, reviewed_at: null,
+            is_selected: false, created_at: "2026-10-08T10:00:00Z", updated_at: "2026-10-08T10:00:00Z",
+          }] }) };
+        }
+        if (u.endsWith("/requests/JS-PS-2026-000009/implementation")) {
+          return { ok: true, status: 200, json: async () => ({ ticket: "T", total: 0, items: [] }) };
+        }
+        return { ok: true, status: 200, json: async () => detailPayload("ASSIGNED_TO_PUBLIC") };
+      })
+    );
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByText(/Submitted Solutions \(1\)/)).toBeTruthy();
+    });
+    expect(screen.getByText("Solar pilot")).toBeTruthy();
+    expect(screen.getByText("Select Winner")).toBeTruthy();
+  });
+
+  it("publishes implementation updates for government issues", async () => {
+    const posted = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url, opts) => {
+        const u = String(url);
+        const method = opts?.method ?? "GET";
+        if (u.endsWith("/requests/JS-PS-2026-000009/implementation") && method === "POST") {
+          posted.push(true);
+          return { ok: true, status: 201, json: async () => ({
+            id: "11111111-1111-1111-1111-111111111111", problem_ticket: "T",
+            stage: "SURVEY_COMPLETED", title: "Survey done", description: null,
+            attachments: [], created_at: "2026-10-08T10:00:00Z",
+          }) };
+        }
+        if (u.endsWith("/requests/JS-PS-2026-000009/solutions")) {
+          return { ok: true, status: 200, json: async () => ({ ticket: "T", total: 0, items: [] }) };
+        }
+        if (u.endsWith("/requests/JS-PS-2026-000009/implementation")) {
+          return { ok: true, status: 200, json: async () => ({ ticket: "T", total: 0, items: [] }) };
+        }
+        return { ok: true, status: 200, json: async () => detailPayload("GOVERNMENT_ISSUE") };
+      })
+    );
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByText(/Implementation Progress \(0\)/)).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText(/Progress title/), {
+      target: { value: "Survey done" },
+    });
+    fireEvent.click(screen.getByText("Publish Update"));
+    await waitFor(() => {
+      expect(posted.length).toBe(1);
+    });
+  });
 });
+
 

@@ -32,10 +32,16 @@ from app.models.government import (
     NotificationType,
 )
 from app.models.contribution import Contribution, ContributionStatus, ContributionType
+from app.models.execution import (
+    ImplementationAttachment,
+    ImplementationStage,
+    ImplementationUpdate,
+    SolutionAttachment,
+)
 from app.models.otp import OTPChallenge, OTPChannel
 from app.models.problem import Problem, ProblemAttachment, ProblemStatus, ProblemVersion
 from app.models.revoked_token import RevokedToken
-from app.models.solution import Solution, SolutionStatus
+from app.models.solution import Solution, SolutionReviewStatus, SolutionStatus
 from app.models.profile import (
     IndividualProfile,
     OrganizationProfile,
@@ -87,6 +93,11 @@ __all__ = [
     "ProblemVersion",
     "Solution",
     "SolutionStatus",
+    "SolutionReviewStatus",
+    "SolutionAttachment",
+    "ImplementationStage",
+    "ImplementationUpdate",
+    "ImplementationAttachment",
     "RefreshToken",
     "PasswordResetToken",
     "RevokedToken",

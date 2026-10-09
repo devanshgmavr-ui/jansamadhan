@@ -297,3 +297,191 @@ def transparency_stats(db: Session) -> dict:
         "open_challenges": counts.get(ProblemStatus.OPEN.value, 0),
         "resolved": counts.get(ProblemStatus.IMPLEMENTED.value, 0),
     }
+
+
+ACTION_LABELS = {
+    "GOV_REVIEW_CREATED": "Government review started",
+    "ASSIGNED_TO_PUBLIC": "Approved as Public Challenge",
+    "MARKED_GOVERNMENT_ISSUE": "Approved as Government Issue",
+    "REQUESTED_INFORMATION": "More information requested",
+    "INFORMATION_PROVIDED": "Information provided by citizen",
+    "REOPENED_FOR_GOVERNMENT_REVIEW": "Returned to government review",
+    "AUTO_ESCALATED": "Review window escalated",
+}
+
+
+def transparency_detail(db: Session, ticket: str) -> dict | None:
+    """Public detail for one approved complaint (Phase 3). Returns None
+    unless the problem is transparency-visible. Timeline blends submission,
+    AI screening, government decisions (official shown generically),
+    solution selection, and implementation updates — public-safe only."""
+    from app.models.ai_review import AIReview
+    from app.models.government import GovernmentAction
+    from app.models.solution import Solution
+    from app.services import government_review_service, implementation_service
+
+    problem = db.execute(
+        select(Problem).where(Problem.ticket == ticket)
+    ).scalars().first()
+    if problem is None or problem.status not in TRANSPARENCY_STATUSES:
+        return None
+    review = db.execute(
+        select(GovernmentReview).where(
+            GovernmentReview.problem_id == problem.id
+        )
+    ).scalars().first()
+    resolution = (
+        "PUBLIC"
+        if problem.status in PUBLIC_STATUSES
+        else government_review_service.resolution_type_for(
+            review.status if review else ""
+        )
+    )
+    reason = None
+    if review is not None and resolution is not None:
+        last = (
+            db.execute(
+                select(GovernmentAction)
+                .where(
+                    GovernmentAction.problem_id == problem.id,
+                    GovernmentAction.new_status == review.status,
+                )
+                .order_by(GovernmentAction.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+        if last is not None and (last.reason or "").strip():
+            reason = last.reason
+
+    solutions: list[dict] = []
+    selected = None
+    if resolution == "PUBLIC":
+        for s in (
+            db.execute(
+                select(Solution)
+                .where(Solution.problem_id == problem.id)
+                .order_by(Solution.created_at.asc())
+            )
+            .scalars()
+            .all()
+        ):
+            entry = {
+                "ticket": s.ticket,
+                "title": s.title,
+                "status": s.status,
+                "review_status": s.review_status,
+                "is_selected": s.is_selected,
+                "created_at": s.created_at,
+            }
+            solutions.append(entry)
+            if s.is_selected:
+                selected = entry
+
+    updates = []
+    if resolution == "GOVERNMENT":
+        rows = implementation_service.list_updates(db, problem.id)
+        attach = implementation_service.attachments_for(
+            db, [u.id for u in rows]
+        )
+        for u in rows:
+            updates.append(
+                {
+                    "id": u.id,
+                    "problem_ticket": ticket,
+                    "stage": u.stage,
+                    "title": u.title,
+                    "description": u.description,
+                    "attachments": [
+                        {
+                            "id": a.id,
+                            "original_name": a.original_name,
+                            "mime_type": a.mime_type,
+                            "size_bytes": a.size_bytes,
+                            "created_at": a.created_at,
+                        }
+                        for a in attach.get(u.id, [])
+                    ],
+                    "created_at": u.created_at,
+                }
+            )
+
+    timeline = [
+        {
+            "kind": "submitted",
+            "label": "Complaint submitted",
+            "detail": None,
+            "created_at": problem.created_at,
+        }
+    ]
+    ai = (
+        db.execute(
+            select(AIReview)
+            .where(AIReview.problem_id == problem.id)
+            .order_by(AIReview.review_number.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if ai is not None and ai.status == "COMPLETED":
+        timeline.append(
+            {
+                "kind": "ai_review",
+                "label": "AI screening completed",
+                "detail": ai.decision,
+                "created_at": ai.created_at,
+            }
+        )
+    for action in (
+        db.execute(
+            select(GovernmentAction)
+            .where(GovernmentAction.problem_id == problem.id)
+            .order_by(GovernmentAction.created_at.asc())
+        )
+        .scalars()
+        .all()
+    ):
+        timeline.append(
+            {
+                "kind": "government",
+                "label": ACTION_LABELS.get(action.action, action.action),
+                "detail": action.reason if action.reason else None,
+                "created_at": action.created_at,
+            }
+        )
+    if selected is not None:
+        timeline.append(
+            {
+                "kind": "solution_selected",
+                "label": f"Solution selected: {selected['title']}",
+                "detail": selected["ticket"],
+                "created_at": selected["created_at"],
+            }
+        )
+    for u in updates:
+        timeline.append(
+            {
+                "kind": "implementation",
+                "label": f"{u['stage']}: {u['title']}",
+                "detail": u["description"],
+                "created_at": u["created_at"],
+            }
+        )
+    timeline.sort(key=lambda e: e["created_at"])
+    return {
+        "ticket": problem.ticket,
+        "title": problem.title,
+        "category": problem.category,
+        "location": problem.location,
+        "severity": problem.severity,
+        "status": problem.status,
+        "decided_at": review.decided_at if review else None,
+        "resolution_type": resolution,
+        "decision_reason": reason,
+        "created_at": problem.created_at,
+        "solutions": solutions,
+        "selected_solution": selected,
+        "solution_count": len(solutions),
+        "implementation_updates": updates,
+        "timeline": timeline,
+    }

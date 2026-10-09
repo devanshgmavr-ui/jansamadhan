@@ -17,6 +17,7 @@ import {
   TrackProblem,
 } from "./pages/Problems";
 import { About, HowItWorks } from "./pages/Static";
+import { ApprovedDetail } from "./pages/ApprovedDetail";
 import {
   BrowseSolutions,
   EditSolution,
@@ -41,6 +42,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/problems" element={<BrowseProblems />} />
+        <Route path="/approved/:ticket" element={<ApprovedDetail />} />
         <Route path="/solutions" element={<BrowseSolutions />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/about" element={<About />} />
