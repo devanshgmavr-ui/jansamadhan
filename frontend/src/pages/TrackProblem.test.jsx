@@ -30,11 +30,15 @@ function baseTrack(overrides = {}) {
 }
 
 function stubTrackSequence(responses) {
-  const calls = { n: 0 };
+  const calls = { n: 0, track: 0 };
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => {
-      const next = responses[Math.min(calls.n++, responses.length - 1)];
+    vi.fn(async (url) => {
+      calls.n++;
+      if (!String(url).includes("/track")) {
+        return { ok: true, status: 200, json: async () => ({ items: [] }) };
+      }
+      const next = responses[Math.min(calls.track++, responses.length - 1)];
       if (next instanceof Error) throw next;
       return { ok: true, status: 200, json: async () => next };
     })
@@ -99,14 +103,14 @@ describe("TrackProblem government updates", () => {
       await vi.advanceTimersByTimeAsync(10);
     });
     expect(screen.getAllByText(/Government Review/).length).toBeGreaterThan(0);
-    expect(calls.n).toBe(1);
+    expect(calls.track).toBe(1);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30000);
       await vi.advanceTimersByTimeAsync(100);
     });
     // Poll fired and the fresh payload rendered without a page reload.
     expect(screen.getAllByText(/Open for Solutions/).length).toBeGreaterThan(0);
-    expect(calls.n).toBe(2);
+    expect(calls.track).toBe(2);
   });
 
   it("keeps the last good snapshot when a refresh fails", async () => {
@@ -178,5 +182,6 @@ describe("TrackProblem government updates", () => {
     expect(screen.getAllByText(/Requires departmental handling/).length).toBeGreaterThan(0);
   });
 });
+
 
 
