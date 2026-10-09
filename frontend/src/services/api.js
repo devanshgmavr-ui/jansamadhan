@@ -113,6 +113,13 @@ export const problemsApi = {
     return raw(`/problems${q ? `?${q}` : ""}`);
   },
   publicGet: (ticket) => raw(`/problems/${ticket}/public`),
+  transparency: (params) => {
+    const qs = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => { if (v) qs.set(k, v); });
+    const q = qs.toString();
+    return raw(`/problems/transparency${q ? `?${q}` : ""}`);
+  },
+  transparencyStats: () => raw("/problems/transparency/stats"),
   reviews: (ticket) => api(`/problems/${ticket}/reviews`),
   requestReview: (ticket) => api(`/problems/${ticket}/review`, { method: "POST", body: {} }),
   mine: (skip = 0, limit = 20) => api(`/users/me/problems?skip=${skip}&limit=${limit}`),

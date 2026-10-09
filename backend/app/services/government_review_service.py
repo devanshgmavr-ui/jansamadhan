@@ -128,6 +128,20 @@ def review_to_problem_status(gov_status: str) -> str:
         )
 
 
+# Phase 1 decision classification. Single source of truth: assigning to the
+# public means a PUBLIC challenge, a government issue means GOVERNMENT
+# handling. Anything else has no resolution yet.
+RESOLUTION_FOR_STATUS = {
+    GovernmentReviewStatus.ASSIGNED_TO_PUBLIC.value: "PUBLIC",
+    GovernmentReviewStatus.GOVERNMENT_ISSUE.value: "GOVERNMENT",
+}
+
+
+def resolution_type_for(gov_status: str | None) -> str | None:
+    """Public classification for a review status, or None when undecided."""
+    return RESOLUTION_FOR_STATUS.get(gov_status or "")
+
+
 def assert_transition(from_status: str, to_status: str) -> None:
     """Reject illegal routing edges server-side. Raises 422."""
     allowed = ALLOWED_TRANSITIONS.get(from_status)

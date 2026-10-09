@@ -38,7 +38,7 @@ describe("ProblemStatusBadge", () => {
   it("renders every routing state distinctly", () => {
     for (const [status, label] of [
       ["MORE_INFORMATION_REQUIRED", "More Information Required"],
-      ["GOVERNMENT_ISSUE", "Government Issue"],
+      ["GOVERNMENT_ISSUE", "Government Action in Progress"],
       ["AUTO_ESCALATED", "Review Escalated"],
       ["OPEN", "Open for Solutions"],
     ]) {
@@ -80,7 +80,7 @@ describe("GovernmentReviewCard", () => {
 
   it("presents government issues without departments or portals", () => {
     renderCard({ ...base, status: "GOVERNMENT_ISSUE", government_review: null });
-    expect(screen.getByText("Government Issue")).toBeTruthy();
+    expect(screen.getByText("Government Action in Progress")).toBeTruthy();
   });
 
   it("presents escalation without claiming acceptance", () => {

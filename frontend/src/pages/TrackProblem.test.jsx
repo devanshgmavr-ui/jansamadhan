@@ -101,7 +101,7 @@ describe("TrackProblem government updates", () => {
     expect(screen.getAllByText(/Government Review/).length).toBeGreaterThan(0);
     expect(calls.n).toBe(1);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(7000);
+      await vi.advanceTimersByTimeAsync(30000);
       await vi.advanceTimersByTimeAsync(100);
     });
     // Poll fired and the fresh payload rendered without a page reload.
@@ -118,8 +118,8 @@ describe("TrackProblem government updates", () => {
     });
     expect(screen.getAllByText(/Government Review/).length).toBeGreaterThan(0);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(7000);
-      await vi.advanceTimersByTimeAsync(7000);
+      await vi.advanceTimersByTimeAsync(30000);
+      await vi.advanceTimersByTimeAsync(30000);
     });
     // Still the real backend state, never a fabricated one.
     expect(screen.getAllByText(/Government Review/).length).toBeGreaterThan(0);

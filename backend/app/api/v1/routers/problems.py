@@ -19,6 +19,9 @@ from app.schemas.problem import (
     ReviewOut,
     SimilarOut,
     TrackOut,
+    TransparencyItem,
+    TransparencyOut,
+    TransparencyStats,
     VersionOut,
 )
 from app.services import discovery_service, problem_service
@@ -94,6 +97,47 @@ def my_problems(
             for p in rows
         ],
     }
+
+
+@router.get("/transparency", response_model=TransparencyOut)
+def transparency_listing(
+    resolution: str | None = Query(default=None, max_length=20),
+    category: str | None = Query(default=None, max_length=100),
+    severity: str | None = Query(default=None, max_length=30),
+    location: str | None = Query(default=None, max_length=200),
+    status: str | None = Query(default=None, max_length=30),
+    q: str | None = Query(default=None, max_length=200),
+    page: int = Query(default=1, ge=1, le=1000),
+    limit: int = Query(default=20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """Public transparency dashboard feed (Phase 2). No authentication.
+    Only government-approved complaints (public challenges + government
+    issues); rejected/pending/private complaints never appear. Newest
+    approval first. Must stay registered before /{ticket}."""
+    items, total = discovery_service.transparency_search(
+        db,
+        resolution=resolution,
+        category=category,
+        severity=severity,
+        location=location,
+        status=status,
+        q=q,
+        page=page,
+        limit=limit,
+    )
+    pages = (total + limit - 1) // limit if total else 0
+    return TransparencyOut(
+        total=total, page=page, limit=limit, pages=pages,
+        items=[TransparencyItem(**item) for item in items],
+    )
+
+
+@router.get("/transparency/stats", response_model=TransparencyStats)
+def transparency_statistics(db: Session = Depends(get_db)):
+    """Dynamic dashboard counters (Phase 2). Single grouped count query.
+    Must stay registered before /{ticket}."""
+    return TransparencyStats(**discovery_service.transparency_stats(db))
 
 
 @router.get("/{ticket}", response_model=ProblemOut)

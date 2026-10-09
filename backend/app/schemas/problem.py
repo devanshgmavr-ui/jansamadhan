@@ -57,6 +57,8 @@ class GovernmentReviewInfo(BaseModel):
     resolution_type: str | None = None
     # Public-facing remark recorded with the terminal decision, if any.
     decision_reason: str | None = None
+    # Approval timestamp (GovernmentReview.decided_at), reused — no duplicate.
+    decided_at: datetime | None = None
 
 
 class ProblemOut(BaseModel):
@@ -149,6 +151,39 @@ class DiscoveryOut(BaseModel):
     limit: int
     pages: int
     items: list[DiscoveryItem]
+
+
+class TransparencyItem(BaseModel):
+    """One card on the public transparency dashboard. Only decided,
+    public-safe fields: ticket, classification, approval date, resolution
+    and the public remark. Never owner identity, info requests, or notes."""
+
+    ticket: str
+    title: str
+    category: str
+    location: str
+    severity: str
+    status: str
+    decided_at: datetime | None = None
+    resolution_type: str | None = None
+    decision_reason: str | None = None
+    created_at: datetime
+
+
+class TransparencyOut(BaseModel):
+    total: int
+    page: int
+    limit: int
+    pages: int
+    items: list[TransparencyItem]
+
+
+class TransparencyStats(BaseModel):
+    total_approved: int
+    challenges: int
+    issues: int
+    open_challenges: int
+    resolved: int
 
 
 class PublicProblemOut(BaseModel):

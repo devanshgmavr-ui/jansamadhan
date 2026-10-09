@@ -61,7 +61,7 @@ export function GovernmentReviewCard({ problem }) {
       )}
       {status === "GOVERNMENT_ISSUE" && (
         <>
-          <h3>Government Issue</h3>
+            <h3>Government Action in Progress</h3>
           <p>
             Your problem has been identified as a government issue and is
             currently being handled through the government review process.

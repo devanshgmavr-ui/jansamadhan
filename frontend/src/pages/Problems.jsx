@@ -308,9 +308,10 @@ export function TrackProblem() {
       });
     };
     load();
-    // Government decisions land while this page is open; refresh so the
-    // timeline always reflects the latest persisted backend state.
-    const timer = setInterval(load, 7000);
+    // Government decisions and homepage statistics land while pages are
+    // open; refresh every 30 seconds so open pages reflect the latest
+    // persisted backend state without manual reload.
+    const timer = setInterval(load, 30000);
     return () => {
       cancelled = true;
       clearInterval(timer);
@@ -352,6 +353,9 @@ export function TrackProblem() {
           </Fragment>
         ))}
         <p>Version {data.current_version} · Updated {new Date(data.updated_at).toLocaleString()}</p>
+        {gov && gov.decided_at && (
+          <p>Approval Date {new Date(gov.decided_at).toLocaleDateString()}</p>
+        )}
       </div>
       <div className="btn-row">
         <Link className="btn secondary" to={`/problems/${ticket}`}>View My Ticket</Link>

@@ -56,7 +56,7 @@ export const STATUS_META = {
     solutionsOpen: false,
   },
   GOVERNMENT_ISSUE: {
-    label: "Government Issue",
+    label: "Government Action in Progress",
     tone: "",
     description:
       "Your problem has been identified as a government issue and is being handled through the government review process.",

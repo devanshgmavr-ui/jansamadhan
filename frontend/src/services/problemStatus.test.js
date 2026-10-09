@@ -13,7 +13,7 @@ describe("status mapping", () => {
   it("labels the government routing states in user language", () => {
     expect(statusLabel("GOV_REVIEW_PENDING")).toBe("Government Review");
     expect(statusLabel("MORE_INFORMATION_REQUIRED")).toBe("More Information Required");
-    expect(statusLabel("GOVERNMENT_ISSUE")).toBe("Government Issue");
+    expect(statusLabel("GOVERNMENT_ISSUE")).toBe("Government Action in Progress");
     expect(statusLabel("AUTO_ESCALATED")).toBe("Review Escalated");
     expect(statusLabel("OPEN")).toBe("Open for Solutions");
   });
