@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { ProblemContributions } from "./Contributions";
@@ -291,15 +291,46 @@ export function TrackProblem() {
   const { ticket } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const loadedRef = useRef(false);
   useEffect(() => {
-    problemsApi.track(ticket).then(setData).catch((e) => setError(e.message));
+    let cancelled = false;
+    const load = () => {
+      problemsApi.track(ticket).then((fresh) => {
+        if (!cancelled) {
+          loadedRef.current = true;
+          setData(fresh);
+          setError("");
+        }
+      }).catch((e) => {
+        // Never fabricate state on failure: keep the last good snapshot
+        // and surface the error only when nothing was ever loaded.
+        if (!cancelled && !loadedRef.current) setError(e.message);
+      });
+    };
+    load();
+    // Government decisions land while this page is open; refresh so the
+    // timeline always reflects the latest persisted backend state.
+    const timer = setInterval(load, 7000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [ticket]);
-  if (error) return <Alert>{error}</Alert>;
+  if (error && !data) return <Alert>{error}</Alert>;
   if (!data) return <p>Loading...</p>;
+  const gov = data.government_review ?? null;
   return (
     <>
       <h2>Track Problem</h2>
       <p><span className="badge">{data.ticket}</span> <ProblemStatusBadge status={data.status} /></p>
+      {gov && gov.review_status === "MORE_INFORMATION_REQUIRED" && gov.info_request && (
+        <Alert kind="info">
+          <strong>More information requested.</strong> {gov.info_request}
+        </Alert>
+      )}
+      {gov && gov.escalation_flag && (
+        <p className="muted">The review window was exceeded; the request was escalated in the review queue.</p>
+      )}
       <div className="card">
         {data.stages.map((s, i) => (
           <Fragment key={s.key}>

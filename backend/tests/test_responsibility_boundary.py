@@ -9,6 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+import json as _json
+
 from app.core import gov_revocation, ratelimit, security
 from app.main import app
 from app.models.government import GovernmentReview
@@ -168,6 +170,78 @@ def test_rereview_returns_to_pending_same_ticket(db):
             Problem, Problem.id == GovernmentReview.problem_id)
         .where(Problem.ticket == ticket)).scalar_one()
     assert after > before  # fresh 24h window
+
+
+# track carries the persisted government decision -----------------------------------
+def _track(db, user, ticket):
+    from app.core import security
+
+    token = security.create_access_token(user.id)
+    r = client.get(f"{PUB}/problems/{ticket}/track",
+                   headers=authz(token))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_track_reflects_routing_decision(db):
+    owner = make_user(db)
+    official = make_official(db)
+    ticket = submit(db, owner, dict(APPROVABLE_PROBLEM)).json()["ticket"]
+    before = _track(db, owner, ticket)
+    assert before["status"] == "GOV_REVIEW_PENDING"
+    assert before["government_review"]["review_status"] == "PENDING"
+    gtok = gov_token(db, official)
+    r = client.post(f"{GOV}/requests/{ticket}/assign-public", json={},
+                    headers=authz(gtok))
+    assert r.status_code == 200, r.text
+    after = _track(db, owner, ticket)
+    assert after["status"] == "OPEN"
+    assert after["government_review"]["review_status"] == "ASSIGNED_TO_PUBLIC"
+    assert after["updated_at"] >= before["updated_at"]
+    gov_stage = [s for s in after["stages"] if s["key"] == "government_review"]
+    assert gov_stage and gov_stage[0]["state"] == "done"
+    open_stage = [s for s in after["stages"] if s["key"] == "open"]
+    assert open_stage and open_stage[0]["state"] == "current"
+
+
+def test_track_shows_information_request(db):
+    owner = make_user(db)
+    official = make_official(db)
+    ticket = submit(db, owner, dict(APPROVABLE_PROBLEM)).json()["ticket"]
+    gtok = gov_token(db, official)
+    r = client.post(f"{GOV}/requests/{ticket}/request-information",
+                    json={"reason": "Which ward exactly?"},
+                    headers=authz(gtok))
+    assert r.status_code == 200, r.text
+    body = _track(db, owner, ticket)
+    assert body["status"] == "MORE_INFORMATION_REQUIRED"
+    assert body["government_review"]["review_status"] == \
+        "MORE_INFORMATION_REQUIRED"
+    assert body["government_review"]["info_request"] == "Which ward exactly?"
+
+
+def test_track_exposes_no_internal_fields(db):
+    owner = make_user(db)
+    official = make_official(db)
+    ticket = submit(db, owner, dict(APPROVABLE_PROBLEM)).json()["ticket"]
+    gtok = gov_token(db, official)
+    client.post(f"{GOV}/requests/{ticket}/request-information",
+                json={"reason": "Which ward exactly?"},
+                headers=authz(gtok))
+    raw = _json.dumps(_track(db, owner, ticket)).lower()
+    for forbidden in ("decided_by", "actor", "password", "official_id",
+                      "internal", "note"):
+        assert forbidden not in raw, forbidden
+    for allowed in ("review_status", "info_request", "pending_since",
+                    "sla_due_at"):
+        assert allowed in raw, allowed
+
+
+def test_track_without_routing_has_null_snapshot(db):
+    owner = make_user(db)
+    r = submit(db, owner, dict(PERSONAL_PROBLEM))
+    body = _track(db, owner, r.json()["ticket"])
+    assert body["government_review"] is None
 
 
 # 20. escalation claims no acceptance -----------------------------------------------------

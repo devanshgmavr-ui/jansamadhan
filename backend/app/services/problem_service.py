@@ -42,9 +42,9 @@ MAX_TICKET_ATTEMPTS = 20
 # Stage 4 lifecycle view. Only the first two stages can be reached now;
 # later stages are shown as pending and are never faked as complete.
 # G2 inserts the government-review gate between classification and public
-# opening; TrackOut's contract (ticket/title/status/stages) is unchanged,
-# the stages list simply gains one entry. Frontend renders stages
-# generically, so no frontend change is required for the data to be correct.
+# opening. TrackOut additionally carries the owner-only government_review
+# snapshot so the Track page reflects official decisions; public surfaces
+# never receive it. Frontend renders stages generically.
 TRACK_STAGES = [
     ("submitted", "Submitted"),
     ("ai_review", "AI Review"),
@@ -286,6 +286,7 @@ def track(db: Session, owner: User, ticket: str) -> TrackOut:
         submitted_at=submitted_at,
         updated_at=problem.updated_at,
         stages=stages,
+        government_review=government_info_for(db, problem),
     )
 
 

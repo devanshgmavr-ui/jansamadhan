@@ -117,6 +117,10 @@ class TrackOut(BaseModel):
     submitted_at: datetime
     updated_at: datetime
     stages: list[TrackStage]
+    # Owner-only routing snapshot (same shape as ProblemOut.government_review,
+    # same privacy rule: track is owner-scoped, never public). Lets the Track
+    # page show the official's information request and review state.
+    government_review: GovernmentReviewInfo | None = None
 
 
 class DiscoveryItem(BaseModel):
