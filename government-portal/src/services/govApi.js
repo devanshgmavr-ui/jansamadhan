@@ -93,6 +93,25 @@ export const govAuthApi = {
   me: () => govApi("/auth/me"),
 };
 
+export const govAnalyticsApi = {
+  overview: () => govApi("/analytics/overview"),
+  exportReport: (report, format) =>
+    govApi(`/requests/export?report=${report}&format=${format}`),
+  audit: (params = {}) => {
+    const qs = new URLSearchParams();
+    ["official", "action", "ticket", "date_from", "date_to"].forEach((k) => {
+      if (params[k]) qs.set(k, params[k]);
+    });
+    qs.set("page", String(params.page ?? 1));
+    qs.set("limit", String(params.limit ?? 50));
+    return govApi(`/audit?${qs.toString()}`);
+  },
+  settings: () => govApi("/settings"),
+  updateSetting: (key, value) =>
+    govApi(`/settings/${key}`, { method: "PUT", body: { value } }),
+  feed: (limit = 50) => govApi(`/notifications/feed?limit=${limit}`),
+};
+
 export const govRequestsApi = {
   dashboard: () => govApi("/dashboard"),
   queue: (params = {}) => {

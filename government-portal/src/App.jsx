@@ -1,11 +1,15 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { useGovAuth } from "./context/useGovAuth";
+import { Analytics } from "./pages/Analytics";
+import { AuditLog } from "./pages/AuditLog";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
+import { NotFound } from "./pages/NotFound";
 import { Profile } from "./pages/Profile";
 import { RequestDetail } from "./pages/RequestDetail";
 import { Requests } from "./pages/Requests";
+import { Settings } from "./pages/Settings";
 
 function RequireGovAuth({ children }) {
   const { isAuthenticated, initializing } = useGovAuth();
@@ -29,7 +33,10 @@ export default function App() {
           element={<RequireGovAuth><RequestDetail /></RequireGovAuth>}
         />
         <Route path="/profile" element={<RequireGovAuth><Profile /></RequireGovAuth>} />
-        <Route path="*" element={<h2>Page not found</h2>} />
+        <Route path="/analytics" element={<RequireGovAuth><Analytics /></RequireGovAuth>} />
+        <Route path="/audit" element={<RequireGovAuth><AuditLog /></RequireGovAuth>} />
+        <Route path="/settings" element={<RequireGovAuth><Settings /></RequireGovAuth>} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </Layout>
   );

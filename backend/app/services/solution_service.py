@@ -96,7 +96,7 @@ def submit_solution(
         )
     content = pdf.file.read()
     original = storage.sanitize_original_name(pdf.filename)
-    ext = storage.validate_solution_pdf(original, content)
+    ext = storage.validate_solution_pdf(original, content, db)
     for _ in range(3):
         ticket = generate_solution_ticket(db)
         # Upload first: a storage failure leaves the database untouched.
@@ -143,6 +143,7 @@ def submit_solution(
             )
             continue
         db.refresh(solution)
+        _announce_solution(db, problem, solution, "SOLUTION_SUBMITTED")
         return solution
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -321,6 +322,34 @@ def problem_ticket_of(db: Session, solution: Solution) -> str:
 REVIEW_DECISIONS = ("APPROVED", "REJECTED", "CHANGES_REQUESTED")
 
 
+def _announce_solution(db: Session, problem: Problem, solution: Solution,
+                       action: str, actor_id=None,
+                       reason: str | None = None) -> None:
+    """Phase 4: audit the solution event and queue the solver email, then
+    flush delivery. Mail failures only record FAILED; workflow stands."""
+    from app.services import government_review_service, notification_service
+
+    audit = government_review_service.record_event(
+        db, problem, action=action, actor_id=actor_id,
+        actor_type="GOVERNMENT_OFFICIAL" if actor_id else "PUBLIC_USER",
+        reason=reason,
+    )
+    db.commit()
+    notification_service.queue_for_audit(
+        db, problem=problem, audit=audit,
+        recipient=notification_service.solver_email(db, solution.submitter_id),
+    )
+    db.commit()
+    try:
+        notification_service.deliver_for_problem(db, problem.id)
+    except Exception:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "solution notification flush failed ticket=%s", problem.ticket
+        )
+
+
 def _solution_for_review(db: Session, ticket: str) -> Solution:
     solution = db.execute(
         select(Solution).where(Solution.ticket == ticket)
@@ -365,6 +394,11 @@ def review_solution(
     db.add(solution)
     db.commit()
     db.refresh(solution)
+    _announce_solution(
+        db, db.get(Problem, solution.problem_id), solution,
+        f"SOLUTION_{decision}",
+        actor_id=official.id, reason=solution.review_reason,
+    )
     return solution
 
 
@@ -398,6 +432,10 @@ def select_solution(db: Session, official, ticket: str) -> Solution:
     db.add(solution)
     db.commit()
     db.refresh(solution)
+    _announce_solution(
+        db, db.get(Problem, solution.problem_id), solution,
+        "SOLUTION_SELECTED", actor_id=official.id,
+    )
     return solution
 
 
@@ -430,7 +468,7 @@ def add_solution_attachment(db: Session, user: User, ticket: str, upload) -> obj
         )
     content = upload.file.read()
     original = storage.sanitize_original_name(upload.filename)
-    ext = storage.validate_attachment(original, content, upload.content_type)
+    ext = storage.validate_attachment(original, content, upload.content_type, db)
     provider = storage.get_solution_provider()
     stored = provider.save(
         ext=ext, content=content,

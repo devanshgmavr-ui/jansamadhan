@@ -10,6 +10,7 @@ service, and serialize. Static routes are registered before /{ticket} so
 
 import json as _json
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials
@@ -36,6 +37,7 @@ from app.schemas.government import (
     GovQueueItem,
     GovQueueOut,
     GovReasonBody,
+    GovSettingBody,
     GovSolutionReviewBody,
     GovRequestDetailOut,
     GovSweepOut,
@@ -498,6 +500,66 @@ def gov_sweep(
     )
 
 
+@router.get("/requests/export")
+def gov_export_requests(
+    report: str = Query(default="complaints", max_length=30),
+    format: str = Query(default="csv", max_length=10),
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    """CSV/PDF report downloads (Phase 4, Part D). Static route: must stay
+    registered before /requests/{ticket} so 'export' is never captured."""
+    from fastapi.responses import Response
+
+    from app.services import export_service
+
+    if report == "analytics":
+        from app.services import analytics_service as _analytics
+
+        summary = _analytics.overview(db)
+        headers = ["metric", "value"]
+        rows = [
+            ["total_complaints", summary["total_complaints"]],
+            ["public_challenges", summary["public_challenges"]],
+            ["government_issues", summary["government_issues"]],
+            ["solutions_submitted", summary["solutions_submitted"]],
+            ["solutions_selected", summary["solutions_selected"]],
+            ["completed_projects", summary["completed_projects"]],
+        ]
+    elif report == "complaints":
+        headers, rows = export_service.complaint_rows(db)
+    elif report == "challenges":
+        headers, all_rows = export_service.complaint_rows(db)
+        rows = [r for r in all_rows if r[5] in (
+            "OPEN", "COLLABORATION", "IN_DEVELOPMENT", "PILOT",
+            "IMPLEMENTED")]
+    elif report == "implementations":
+        headers, rows = export_service.implementation_rows(db)
+    elif report == "solutions":
+        headers, rows = export_service.solution_rows(db)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Report must be complaints, challenges, implementations, solutions, or analytics.",
+        )
+    if format == "pdf":
+        return Response(
+            content=export_service.to_pdf(
+                f"JanSamadhan {report} report", headers, rows),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{report}.pdf"'
+            },
+        )
+    return Response(
+        content=export_service.to_csv(headers, rows),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{report}.csv"'
+        },
+    )
+
+
 @router.get("/requests/{ticket}", response_model=GovRequestDetailOut)
 def gov_detail(
     ticket: str,
@@ -751,3 +813,109 @@ def _implementation_out(ticket: str, update, attachments: list) -> dict:
         ],
         "created_at": update.created_at,
     }
+
+
+# --------------------------------------------------------------------------
+# Phase 4: analytics, exports, audit, settings, activity feed
+# --------------------------------------------------------------------------
+
+@router.get("/analytics/overview")
+def gov_analytics(
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    from app.services import analytics_service
+
+    return analytics_service.overview(db)
+
+
+@router.get("/audit")
+def gov_audit(
+    official: str | None = Query(default=None, max_length=64),
+    action: str | None = Query(default=None, max_length=40),
+    ticket: str | None = Query(default=None, max_length=20),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    page: int = Query(default=1, ge=1, le=1000),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current: GovernmentUser = Depends(get_current_government_user),
+):
+    from app.services import export_service
+
+    headers, rows = export_service.audit_rows(
+        db, official=official, action=action, ticket=ticket,
+        date_from=date_from, date_to=date_to, limit=page * limit)
+    total = len(rows)
+    page_rows = rows[(page - 1) * limit:page * limit]
+    return {"total": total, "page": page, "limit": limit,
+            "items": [dict(zip(headers, r)) for r in page_rows]}
+
+
+@router.get("/settings")
+def gov_list_settings(
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    from app.services import settings_service
+
+    return {"items": settings_service.list_settings(db)}
+
+
+@router.put("/settings/{key}")
+def gov_update_setting(
+    key: str,
+    data: GovSettingBody,
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    from app.services import settings_service
+
+    return settings_service.set_setting(db, key.strip(), data.value or "")
+
+
+@router.get("/notifications/feed")
+def gov_notification_feed(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    official: GovernmentUser = Depends(get_current_government_user),
+):
+    from sqlalchemy import desc
+
+    from app.models.execution import ImplementationUpdate
+    from app.models.problem import Problem
+    from app.models.solution import Solution
+
+    feed: list[dict] = []
+    pending = db.execute(
+        select(GovernmentReview)
+        .where(GovernmentReview.status == "PENDING")
+        .order_by(desc(GovernmentReview.pending_since)).limit(limit)
+    ).scalars().all()
+    for r in pending:
+        feed.append({"kind": "pending_review",
+                     "ticket": _ticket_of(db, r.problem_id),
+                     "created_at": r.pending_since})
+    sols = db.execute(
+        select(Solution).order_by(desc(Solution.created_at)).limit(limit)
+    ).scalars().all()
+    for s in sols:
+        feed.append({"kind": "solution_submitted", "ticket": s.ticket,
+                     "created_at": s.created_at})
+    ups = db.execute(
+        select(ImplementationUpdate)
+        .order_by(desc(ImplementationUpdate.created_at)).limit(limit)
+    ).scalars().all()
+    for u in ups:
+        feed.append({"kind": "implementation_update",
+                     "ticket": _ticket_of(db, u.problem_id),
+                     "created_at": u.created_at})
+    feed.sort(key=lambda e: e["created_at"], reverse=True)
+    return {"total": len(feed), "items": feed[:limit]}
+
+
+def _ticket_of(db: Session, problem_id) -> str:
+    from app.models.problem import Problem
+
+    problem = db.get(Problem, problem_id)
+    return problem.ticket if problem else "?"

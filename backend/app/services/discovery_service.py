@@ -174,6 +174,9 @@ def transparency_search(
     location: str | None = None,
     status: str | None = None,
     q: str | None = None,
+    date_from=None,
+    date_to=None,
+    sort: str = "newest",
     page: int = 1,
     limit: int = 20,
 ) -> tuple[list[dict], int]:
@@ -225,12 +228,21 @@ def transparency_search(
                 Problem.location.ilike(like),
             )
         )
+    if date_from is not None:
+        stmt = stmt.where(Problem.created_at >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(Problem.created_at <= date_to)
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = db.execute(count_stmt).scalar_one()
-    stmt = stmt.order_by(
-        GovernmentReview.decided_at.desc().nulls_last(),
-        Problem.created_at.desc(),
-    )
+    if sort == "oldest":
+        stmt = stmt.order_by(Problem.created_at.asc())
+    elif sort == "updated":
+        stmt = stmt.order_by(Problem.updated_at.desc())
+    else:
+        stmt = stmt.order_by(
+            GovernmentReview.decided_at.desc().nulls_last(),
+            Problem.created_at.desc(),
+        )
     limit = min(max(limit, 1), MAX_LIMIT)
     page = max(page, 1)
     pairs = db.execute(stmt.offset((page - 1) * limit).limit(limit)).all()

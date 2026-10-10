@@ -56,6 +56,29 @@ NOTIFY_FOR_ACTION: dict[str, str] = {
     GovernmentActionType.AUTO_ESCALATED.value: (
         NotificationType.AUTO_ESCALATED.value
     ),
+    # Phase 4 execution events. Recipients differ per event (solver for
+    # solution reviews, owner otherwise); see queue_for_audit recipient.
+    GovernmentActionType.SOLUTION_SUBMITTED.value: (
+        NotificationType.SOLUTION_SUBMITTED.value
+    ),
+    GovernmentActionType.SOLUTION_APPROVED.value: (
+        NotificationType.SOLUTION_APPROVED.value
+    ),
+    GovernmentActionType.SOLUTION_REJECTED.value: (
+        NotificationType.SOLUTION_REJECTED.value
+    ),
+    GovernmentActionType.SOLUTION_CHANGES_REQUESTED.value: (
+        NotificationType.SOLUTION_CHANGES_REQUESTED.value
+    ),
+    GovernmentActionType.SOLUTION_SELECTED.value: (
+        NotificationType.SOLUTION_SELECTED.value
+    ),
+    GovernmentActionType.IMPLEMENTATION_STARTED.value: (
+        NotificationType.IMPLEMENTATION_STARTED.value
+    ),
+    GovernmentActionType.IMPLEMENTATION_COMPLETED.value: (
+        NotificationType.IMPLEMENTATION_COMPLETED.value
+    ),
 }
 
 
@@ -137,6 +160,44 @@ def build_workflow_email(
             f"Track it here:\n{detail_link}\n"
         )
         return subject, body, detail_link
+    if notif_type in (
+        NotificationType.SOLUTION_SUBMITTED.value,
+        NotificationType.SOLUTION_APPROVED.value,
+        NotificationType.SOLUTION_REJECTED.value,
+        NotificationType.SOLUTION_CHANGES_REQUESTED.value,
+        NotificationType.SOLUTION_SELECTED.value,
+    ):
+        headlines = {
+            NotificationType.SOLUTION_SUBMITTED.value: "solution received",
+            NotificationType.SOLUTION_APPROVED.value: "solution approved",
+            NotificationType.SOLUTION_REJECTED.value: "solution not approved",
+            NotificationType.SOLUTION_CHANGES_REQUESTED.value: "solution changes requested",
+            NotificationType.SOLUTION_SELECTED.value: "solution selected as winner",
+        }
+        headline = headlines[notif_type]
+        subject = f"JanSamadhan {ticket}: {headline}"
+        body = (
+            f"Update on your JanSamadhan solution for {ticket} ({title}).\n\n"
+            f"Status: {headline}\n\n"
+            f"{(reason or '').strip()}\n\n"
+            f"View it here:\n{detail_link}\n"
+        )
+        return subject, body, detail_link
+    if notif_type in (
+        NotificationType.IMPLEMENTATION_STARTED.value,
+        NotificationType.IMPLEMENTATION_COMPLETED.value,
+    ):
+        started = notif_type == NotificationType.IMPLEMENTATION_STARTED.value
+        subject = f"JanSamadhan {ticket}: implementation " + ("started" if started else "completed")
+        body = (
+            f"Government implementation work on your JanSamadhan problem "
+            f"has {'started' if started else 'been completed'}.\n\n"
+            f"Ticket: {ticket}\n"
+            f"Title: {title}\n\n"
+            f"{(reason or '').strip()}\n\n"
+            f"Track it here:\n{detail_link}\n"
+        )
+        return subject, body, detail_link
     raise ValueError(f"Unknown notification type: {notif_type}.")
 
 
@@ -148,14 +209,25 @@ def owner_email(db: Session, problem: Problem) -> str | None:
     return address.strip() or None
 
 
+def solver_email(db: Session, submitter_id) -> str | None:
+    """Recipient rule (Phase 4): the solution submitter's account email
+    from the database."""
+    solver = db.get(User, submitter_id)
+    address = (solver.email if solver is not None else "") or ""
+    return address.strip() or None
+
+
 def queue_for_audit(
-    db: Session, *, problem: Problem, audit: GovernmentAction
+    db: Session, *, problem: Problem, audit: GovernmentAction,
+    recipient: str | None = None,
 ) -> Notification | None:
     """Create the PENDING intent for an audit event inside the caller's
     transaction (no commit here). Idempotent via unique audit_id: a second
     call for the same event returns the existing row. Returns None for
-    audit-only events (INFORMATION_PROVIDED) or when the owner has no
-    email address."""
+    audit-only events (INFORMATION_PROVIDED) or when no recipient email
+    is available. An explicit recipient (e.g. a solver) overrides the
+    problem owner; it must still come from the database, never from
+    client input (callers resolve it)."""
     notif_type = NOTIFY_FOR_ACTION.get(audit.action)
     if notif_type is None:
         return None
@@ -171,7 +243,7 @@ def queue_for_audit(
     )
     if existing is not None:
         return existing
-    recipient = owner_email(db, problem)
+    recipient = recipient or owner_email(db, problem)
     if recipient is None:
         logger.warning(
             "notification skipped ticket=%s action=%s: owner has no email",

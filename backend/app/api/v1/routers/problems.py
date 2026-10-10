@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from app.core.deps import get_current_user
 from app.db.database import get_db
@@ -100,6 +102,44 @@ def my_problems(
     }
 
 
+@users_router.get("/me/notifications")
+def my_notifications(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Citizen notification history (Phase 4, Part E). Only intents
+    addressed to the caller's own account email, newest first."""
+    from sqlalchemy import desc
+
+    from app.models.government import Notification
+
+    rows = (
+        db.execute(
+            select(Notification)
+            .where(Notification.recipient == user.email)
+            .order_by(desc(Notification.created_at))
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "total": len(rows),
+        "items": [
+            {
+                "ticket": r.ticket,
+                "type": r.type,
+                "subject": r.subject,
+                "body": r.body,
+                "status": r.status,
+                "created_at": r.created_at,
+            }
+            for r in rows
+        ],
+    }
+
+
 @router.get("/transparency", response_model=TransparencyOut)
 def transparency_listing(
     resolution: str | None = Query(default=None, max_length=20),
@@ -108,6 +148,9 @@ def transparency_listing(
     location: str | None = Query(default=None, max_length=200),
     status: str | None = Query(default=None, max_length=30),
     q: str | None = Query(default=None, max_length=200),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    sort: str = Query(default="newest", pattern="^(newest|oldest|updated)$"),
     page: int = Query(default=1, ge=1, le=1000),
     limit: int = Query(default=20, ge=1, le=50),
     db: Session = Depends(get_db),
@@ -124,6 +167,9 @@ def transparency_listing(
         location=location,
         status=status,
         q=q,
+        date_from=date_from,
+        date_to=date_to,
+        sort=sort,
         page=page,
         limit=limit,
     )

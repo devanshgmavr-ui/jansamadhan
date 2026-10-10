@@ -98,10 +98,29 @@ class OpenRouterProvider:
             raise AIProviderError("OpenRouter returned malformed review output.") from None
 
 
-def resolve_provider():
-    """Return the configured provider. Falls back to mock when no key is set."""
-    if settings.AI_PROVIDER.lower() == "openrouter" and settings.AI_API_KEY:
-        return OpenRouterProvider(settings.AI_API_KEY, settings.AI_MODEL), "openrouter", settings.AI_MODEL
+def resolve_provider(db=None):
+    """Return the configured provider. Falls back to mock when no key is
+    set. Admin SystemSetting rows (AI_PROVIDER/AI_MODEL/AI_API_KEY) win
+    over environment values when a session is supplied."""
+    from app.core.config import settings as _env
+
+    provider_name = _env.AI_PROVIDER
+    model_name = _env.AI_MODEL
+    api_key = _env.AI_API_KEY
+    if db is not None:
+        try:
+            from app.services import settings_service
+
+            provider_name = settings_service.get_effective(
+                db, "AI_PROVIDER", provider_name, "mock")
+            model_name = settings_service.get_effective(
+                db, "AI_MODEL", model_name, "openai/gpt-4o-mini")
+            api_key = settings_service.get_effective(
+                db, "AI_API_KEY", api_key, "")
+        except Exception:
+            pass
+    if provider_name.lower() == "openrouter" and api_key:
+        return OpenRouterProvider(api_key, model_name), "openrouter", model_name
     from app.services.ai.providers.mock import MockAIProvider
 
     return MockAIProvider(), "mock", "mock-rules-v1"

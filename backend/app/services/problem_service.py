@@ -332,7 +332,7 @@ def add_attachment(
     problem = get_owned(db, owner, ticket)
     content = upload.file.read()
     original = storage.sanitize_original_name(upload.filename)
-    ext = storage.validate_attachment(original, content, upload.content_type)
+    ext = storage.validate_attachment(original, content, upload.content_type, db)
     provider = storage.get_provider()
     # Upload first: a storage failure leaves the database untouched.
     stored = provider.save(

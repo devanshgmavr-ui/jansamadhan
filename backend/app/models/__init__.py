@@ -42,6 +42,7 @@ from app.models.otp import OTPChallenge, OTPChannel
 from app.models.problem import Problem, ProblemAttachment, ProblemStatus, ProblemVersion
 from app.models.revoked_token import RevokedToken
 from app.models.solution import Solution, SolutionReviewStatus, SolutionStatus
+from app.models.system_settings import KNOWN_SETTINGS, SystemSetting
 from app.models.profile import (
     IndividualProfile,
     OrganizationProfile,
@@ -98,6 +99,8 @@ __all__ = [
     "ImplementationStage",
     "ImplementationUpdate",
     "ImplementationAttachment",
+    "SystemSetting",
+    "KNOWN_SETTINGS",
     "RefreshToken",
     "PasswordResetToken",
     "RevokedToken",

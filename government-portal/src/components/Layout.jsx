@@ -18,6 +18,9 @@ export function Layout({ children }) {
         <nav className="nav">
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/requests">Review Queue</NavLink>
+          <NavLink to="/analytics">Analytics</NavLink>
+          <NavLink to="/audit">Audit Log</NavLink>
+          <NavLink to="/settings">Settings</NavLink>
           <NavLink to="/profile">Profile</NavLink>
           {official && (
             <button className="btn secondary" onClick={signOut}>Logout</button>

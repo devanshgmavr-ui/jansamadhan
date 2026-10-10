@@ -126,6 +126,7 @@ export const problemsApi = {
   reviews: (ticket) => api(`/problems/${ticket}/reviews`),
   requestReview: (ticket) => api(`/problems/${ticket}/review`, { method: "POST", body: {} }),
   mine: (skip = 0, limit = 20) => api(`/users/me/problems?skip=${skip}&limit=${limit}`),
+  myNotifications: (limit = 50) => api(`/users/me/notifications?limit=${limit}`),
   async upload(ticket, file) {
     const tokens = getTokens();
     const form = new FormData();
@@ -213,8 +214,7 @@ export const solutionsApi = {
   solutionAttachmentUrl: (ticket, id) => `${BASE}/solutions/${ticket}/attachments/${id}/download`,
 };
 
-export const contribApi = {
-  create: (body) => api("/contributions", { method: "POST", body }),
+export const contribApi = {  create: (body) => api("/contributions", { method: "POST", body }),
   get: (id) => api(`/contributions/${id}`),
   update: (id, body) => api(`/contributions/${id}`, { method: "PUT", body }),
   remove: (id) => api(`/contributions/${id}`, { method: "DELETE" }),

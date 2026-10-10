@@ -12,6 +12,35 @@ from fastapi import HTTPException, status
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".txt", ".csv"}
 
+
+def _upload_limits(db=None) -> tuple[set[str], int, int]:
+    """Allowed extensions + max bytes, honoring admin settings with env
+    fallback. Returns (extensions, attachment_max, solution_pdf_max)."""
+    exts = set(ALLOWED_EXTENSIONS)
+    attach_max = MAX_ATTACHMENT_BYTES
+    pdf_max = MAX_SOLUTION_PDF_BYTES
+    if db is not None:
+        try:
+            from app.services import settings_service
+
+            raw_exts = settings_service.get_effective(
+                db, "ATTACHMENT_ALLOWED_EXTENSIONS", "")
+            if raw_exts.strip():
+                exts = {e.strip().lower() if e.strip().startswith(".")
+                        else f".{e.strip().lower()}"
+                        for e in raw_exts.split(",") if e.strip()}
+            raw_mb = settings_service.get_effective(
+                db, "ATTACHMENT_MAX_MB", "")
+            if raw_mb.strip() and float(raw_mb) > 0:
+                attach_max = int(float(raw_mb) * 1024 * 1024)
+            raw_pdf = settings_service.get_effective(
+                db, "SOLUTION_PDF_MAX_MB", "")
+            if raw_pdf.strip() and float(raw_pdf) > 0:
+                pdf_max = int(float(raw_pdf) * 1024 * 1024)
+        except Exception:
+            pass
+    return exts, attach_max, pdf_max
+
 # Minimal magic-number sniffing (pure stdlib) for common binary types.
 _MAGIC = {
     ".pdf": [b"%PDF"],
@@ -138,7 +167,7 @@ def reset_providers() -> None:
 MAX_SOLUTION_PDF_BYTES = 15 * 1024 * 1024
 
 
-def validate_solution_pdf(filename: str, content: bytes) -> str:
+def validate_solution_pdf(filename: str, content: bytes, db=None) -> str:
     ext = Path(filename or "").suffix.lower()
     if ext != ".pdf":
         raise HTTPException(
@@ -150,10 +179,11 @@ def validate_solution_pdf(filename: str, content: bytes) -> str:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Empty file uploads are not allowed.",
         )
-    if len(content) > MAX_SOLUTION_PDF_BYTES:
+    _, _, pdf_max = _upload_limits(db)
+    if len(content) > pdf_max:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="PDF exceeds the 15 MB limit.",
+            detail=f"PDF exceeds the {pdf_max // (1024 * 1024)} MB limit.",
         )
     if not content.startswith(b"%PDF"):
         raise HTTPException(
@@ -172,23 +202,25 @@ def sanitize_original_name(name: str | None) -> str:
     return (base or "attachment")[:255]
 
 
-def validate_attachment(filename: str, content: bytes, content_type: str | None) -> str:
-    """Return the safe lowercase extension, or raise 422/413."""
+def validate_attachment(filename: str, content: bytes, content_type: str | None, db=None) -> str:
+    """Return the safe lowercase extension, or raise 422/413. Limits honor
+    admin settings when a session is supplied."""
     ext = Path(filename or "").suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    allowed, attach_max, _ = _upload_limits(db)
+    if ext not in allowed:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"File type not allowed. Allowed: {sorted(ALLOWED_EXTENSIONS)}",
+            detail=f"File type not allowed. Allowed: {sorted(allowed)}",
         )
     if len(content) == 0:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Empty file uploads are not allowed.",
         )
-    if len(content) > MAX_ATTACHMENT_BYTES:
+    if len(content) > attach_max:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File exceeds the 10 MB limit.",
+            detail=f"File exceeds the {attach_max // (1024 * 1024)} MB limit.",
         )
     for prefix in _MAGIC.get(ext, []):
         if not content.startswith(prefix):

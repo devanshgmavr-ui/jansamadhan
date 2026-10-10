@@ -161,6 +161,10 @@ class GovSolutionReviewBody(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
 
 
+class GovSettingBody(BaseModel):
+    value: str | None = Field(default=None, max_length=2000)
+
+
 class GovAssignBody(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
 

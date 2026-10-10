@@ -25,6 +25,9 @@ export default function Home() {
     location: "",
     status: "",
     q: "",
+    date_from: "",
+    date_to: "",
+    sort: "newest",
   });
 
   useEffect(() => {
@@ -50,8 +53,7 @@ export default function Home() {
       cancelled = true;
       clearInterval(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.resolution, filters.category, filters.severity, filters.location, filters.status, filters.q]);
+  }, [filters.resolution, filters.category, filters.severity, filters.location, filters.status, filters.q, filters.date_from, filters.date_to, filters.sort]);
 
   const set = (key) => (e) => setFilters((f) => ({ ...f, [key]: e.target.value }));
 
@@ -108,6 +110,19 @@ export default function Home() {
             </label>
             <label>Search{" "}
               <input value={filters.q} onChange={set("q")} placeholder="Search" />
+            </label>
+            <label>From{" "}
+              <input type="date" value={filters.date_from} onChange={set("date_from")} />
+            </label>
+            <label>To{" "}
+              <input type="date" value={filters.date_to} onChange={set("date_to")} />
+            </label>
+            <label>Sort{" "}
+              <select value={filters.sort} onChange={set("sort")}>
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="updated">Most Updated</option>
+              </select>
             </label>
           </div>
         </form>

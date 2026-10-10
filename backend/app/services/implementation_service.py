@@ -20,6 +20,38 @@ from app.services import storage
 STAGES = tuple(s.value for s in ImplementationStage)
 
 
+def _announce_implementation(db: Session, problem: Problem,
+                             update: ImplementationUpdate,
+                             first: bool) -> None:
+    """Phase 4: audit + owner email on implementation start (first update)
+    and on completion (COMPLETED/CLOSED stage)."""
+    from app.services import government_review_service, notification_service
+
+    action = None
+    if first:
+        action = "IMPLEMENTATION_STARTED"
+    if update.stage in ("COMPLETED", "CLOSED"):
+        action = "IMPLEMENTATION_COMPLETED"
+    if action is None:
+        return
+    audit = government_review_service.record_event(
+        db, problem, action=action, actor_id=update.created_by,
+        actor_type="GOVERNMENT_OFFICIAL", reason=update.title,
+    )
+    db.commit()
+    notification_service.queue_for_audit(db, problem=problem, audit=audit)
+    db.commit()
+    try:
+        notification_service.deliver_for_problem(db, problem.id)
+    except Exception:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "implementation notification flush failed ticket=%s",
+            problem.ticket,
+        )
+
+
 def _issue_or_404(db: Session, problem_ticket: str) -> Problem:
     problem = db.execute(
         select(Problem).where(Problem.ticket == problem_ticket)
@@ -61,6 +93,14 @@ def create_update(
     )
     db.add(update)
     db.flush()
+    first = (
+        db.execute(
+            select(func.count())
+            .select_from(ImplementationUpdate)
+            .where(ImplementationUpdate.problem_id == problem.id)
+        ).scalar_one()
+        == 1
+    )
     provider = storage.get_solution_provider()
     saved: list[str] = []
     try:
@@ -68,7 +108,7 @@ def create_update(
             content = upload.file.read()
             original = storage.sanitize_original_name(upload.filename)
             ext = storage.validate_attachment(
-                original, content, upload.content_type
+                original, content, upload.content_type, db
             )
             stored = provider.save(
                 ext=ext, content=content,
@@ -96,6 +136,7 @@ def create_update(
                 pass
         raise
     db.refresh(update)
+    _announce_implementation(db, problem, update, first=first)
     return update
 
 

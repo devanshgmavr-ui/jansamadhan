@@ -18,6 +18,7 @@ import {
 } from "./pages/Problems";
 import { About, HowItWorks } from "./pages/Static";
 import { ApprovedDetail } from "./pages/ApprovedDetail";
+import { NotFound } from "./pages/NotFound";
 import {
   BrowseSolutions,
   EditSolution,
@@ -70,7 +71,7 @@ export default function App() {
         <Route path="/my-collaborations" element={<RequireAuth><MyCollaborations /></RequireAuth>} />
         <Route path="/collaborations/:id" element={<RequireAuth><CollaborationDetail /></RequireAuth>} />
         <Route path="/projects/:id" element={<RequireAuth><ProjectDetail /></RequireAuth>} />
-        <Route path="*" element={<h2>Page not found</h2>} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </Layout>
   );

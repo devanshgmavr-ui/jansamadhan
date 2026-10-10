@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert } from "../components/ui";
 import { usePolling } from "../hooks/usePolling";
-import { govRequestsApi } from "../services/govApi";
+import { govAnalyticsApi, govRequestsApi } from "../services/govApi";
 
 export function Dashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [sweepMsg, setSweepMsg] = useState("");
+  const [feed, setFeed] = useState([]);
 
   const refresh = (silent = false) => {
     if (!silent) {
@@ -36,8 +37,7 @@ export function Dashboard() {
   useEffect(() => {
     let ignore = false;
     govRequestsApi
-      .dashboard()
-      .then((d) => {
+      .dashboard()      .then((d) => {
         if (!ignore) {
           setData(d);
           setLoading(false);
@@ -49,6 +49,12 @@ export function Dashboard() {
           setLoading(false);
         }
       });
+    govAnalyticsApi
+      .feed(20)
+      .then((f) => {
+        if (!ignore) setFeed(f.items ?? []);
+      })
+      .catch(() => {});
     return () => {
       ignore = true;
     };
@@ -114,6 +120,17 @@ export function Dashboard() {
         Escalation runs on the backend 24-hour window; this button triggers a
         manual check. The portal performs no automatic escalation itself.
       </p>
+      <div className="card">
+        <h3>Recent Activity</h3>
+        {feed.length === 0 && <p>No recent events.</p>}
+        {feed.map((e, i) => (
+          <p key={`${e.created_at}-${i}`}>
+            <span className="badge">{e.kind.replace(/_/g, " ")}</span>{" "}
+            <span className="badge">{e.ticket}</span>{" "}
+            <span className="muted">· {new Date(e.created_at).toLocaleString()}</span>
+          </p>
+        ))}
+      </div>
     </>
   );
 }

@@ -169,6 +169,14 @@ def test_action_vocabulary_closed():
         "INFORMATION_PROVIDED",
         "REOPENED_FOR_GOVERNMENT_REVIEW",
         "AUTO_ESCALATED",
+        # Phase 4 execution events (solution + implementation lifecycle).
+        "SOLUTION_SUBMITTED",
+        "SOLUTION_APPROVED",
+        "SOLUTION_REJECTED",
+        "SOLUTION_CHANGES_REQUESTED",
+        "SOLUTION_SELECTED",
+        "IMPLEMENTATION_STARTED",
+        "IMPLEMENTATION_COMPLETED",
     }
 
 

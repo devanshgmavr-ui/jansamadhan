@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/useAuth";
 import { ProblemStatusBadge } from "../components/ui";
-import { contribApi } from "../services/api";
+import { contribApi, problemsApi } from "../services/api";
 
 function KV({ data }) {
   if (!data) return <p>No additional profile information.</p>;
@@ -92,7 +92,30 @@ export function Dashboard() {
           {data.profile?.interests && <p>Areas of interest: {data.profile.interests}</p>}
         </div>
       )}
+      <NotificationHistory />
     </>
+  );
+}
+
+export function NotificationHistory() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    problemsApi.myNotifications(50).then((d) => setItems(d.items ?? [])).catch(() => setItems([]));
+  }, []);
+  return (
+    <div className="card" style={{ marginTop: "1rem" }}>
+      <h3>Notification History ({items.length})</h3>
+      {items.length === 0 && <p>No notifications yet.</p>}
+      {items.map((n, i) => (
+        <p key={`${n.created_at}-${i}`}>
+          <strong>{n.subject}</strong>{" "}
+          <span className="badge">{n.ticket}</span>{" "}
+          <span className="badge">{n.status}</span>
+          <br />
+          <span className="muted">{new Date(n.created_at).toLocaleString()}</span>
+        </p>
+      ))}
+    </div>
   );
 }
 

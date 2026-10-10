@@ -88,7 +88,7 @@ def run_review(db: Session, problem: Problem, version: ProblemVersion,
     if provider_override is not None:
         provider, provider_name, model_name = provider_override, "test-stub", "test-stub"
     else:
-        provider, provider_name, model_name = resolve_provider()
+        provider, provider_name, model_name = resolve_provider(db)
     number = (
         db.execute(
             select(func.count())

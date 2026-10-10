@@ -169,8 +169,7 @@ def is_expired(review: GovernmentReview, now: datetime | None = None) -> bool:
     return moment > review.sla_due_at
 
 
-def get_for_problem(db: Session, problem_id) -> GovernmentReview | None:
-    return (
+def get_for_problem(db: Session, problem_id) -> GovernmentReview | None:    return (
         db.execute(
             select(GovernmentReview).where(
                 GovernmentReview.problem_id == problem_id
@@ -203,6 +202,27 @@ def _audit(
         reason=reason,
     )
     db.add(row)
+    return row
+
+
+def record_event(
+    db: Session,
+    problem: Problem,
+    *,
+    action: str,
+    actor_id=None,
+    actor_type: str | None = None,
+    reason: str | None = None,
+) -> GovernmentAction:
+    """Append a standalone workflow audit event (Phase 4: solution and
+    implementation lifecycle). No status change; flushed for use as a
+    notification anchor, committed by the caller."""
+    row = _audit(
+        db, problem, action=action, previous_status=None,
+        new_status=problem.status, actor_id=actor_id, actor_type=actor_type,
+        reason=reason,
+    )
+    db.flush()
     return row
 
 
