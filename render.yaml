@@ -2,6 +2,11 @@
 # production topology; secrets are NEVER stored here (sync: false means
 # Render prompts for values and keeps them out of git).
 #
+# LIVE PRODUCTION BACKEND (verified healthy 2026-10-12):
+#   https://jansamadhan-backend-19dr.onrender.com
+# The plain jansamadhan-backend.onrender.com hostname is SUSPENDED and must
+# not be used. Both frontends below point at the -19dr backend.
+#
 # Previews/deploys: backend serves the API, both frontends are static SPAs
 # with a /* -> /index.html rewrite so BrowserRouter deep links work.
 
@@ -59,7 +64,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://jansamadhan-backend.onrender.com/api/v1
+        value: https://jansamadhan-backend-19dr.onrender.com/api/v1
 
   - type: web
     name: jansamadhan-government
@@ -73,4 +78,4 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://jansamadhan-backend.onrender.com/api/v1
+        value: https://jansamadhan-backend-19dr.onrender.com/api/v1
